@@ -334,15 +334,41 @@ app.post('/users/sync', authenticateToken, async (req, res) => {
 
 app.get('/users/me', authenticateToken, async (req, res) => {
     try {
-        const { rows } = await db.query(
-            `SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, approval_status, rejection_reason, created_at,
-             level, commission_balance, referral_code, has_purchased_kit, first_order_completed, points, total_accumulated,
-             affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count
-             FROM users WHERE id = $1`,
-            [req.user.id]
-        );
-        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
-        res.json(rows[0]);
+        // Try full query with new columns first
+        try {
+            const { rows } = await db.query(
+                `SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, approval_status, rejection_reason, created_at,
+                 level, commission_balance, referral_code, has_purchased_kit, first_order_completed, points, total_accumulated,
+                 affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count
+                 FROM users WHERE id = $1`,
+                [req.user.id]
+            );
+            if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+            return res.json(rows[0]);
+        } catch (queryErr) {
+            // Fallback: columns may not exist yet (setup_db not run)
+            console.warn('Full user query failed, using basic columns:', queryErr.message);
+            const { rows } = await db.query(
+                `SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, approval_status, rejection_reason, created_at
+                 FROM users WHERE id = $1`,
+                [req.user.id]
+            );
+            if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+            // Add defaults for missing columns
+            const user = rows[0];
+            user.level = 'starter';
+            user.commission_balance = 0;
+            user.referral_code = null;
+            user.has_purchased_kit = false;
+            user.first_order_completed = false;
+            user.points = 0;
+            user.total_accumulated = 0;
+            user.affiliate_type = null;
+            user.affiliate_status = null;
+            user.affiliate_level = null;
+            user.affiliate_sales_count = 0;
+            return res.json(user);
+        }
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar usuario' });
@@ -361,7 +387,6 @@ app.get('/users/me/level', authenticateToken, async (req, res) => {
         const currentLevel = user.level || 'starter';
         const config = LEVEL_CONFIG[currentLevel];
 
-        // Calculate progress to next level
         let nextLevel = null;
         let progressPercent = 100;
         let amountToNext = 0;
@@ -376,7 +401,6 @@ app.get('/users/me/level', authenticateToken, async (req, res) => {
             progressPercent = Math.min(100, ((parseFloat(user.quarter_accumulated) || 0) / 10000) * 100);
         }
 
-        // Days until potential downgrade (90 days inactivity)
         let daysUntilDowngrade = null;
         if (user.last_purchase_date) {
             const lastPurchase = new Date(user.last_purchase_date);
@@ -398,6 +422,22 @@ app.get('/users/me/level', authenticateToken, async (req, res) => {
             lastPurchaseDate: user.last_purchase_date
         });
     } catch (err) {
+        // Columns may not exist yet
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({
+                level: 'starter',
+                levelName: 'Starter',
+                discount: 0.30,
+                totalAccumulated: 0,
+                quarterAccumulated: 0,
+                nextLevel: 'prata',
+                nextLevelName: 'Prata',
+                amountToNext: 5000,
+                progressPercent: 0,
+                daysUntilDowngrade: null,
+                lastPurchaseDate: null
+            });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar nivel' });
     }
@@ -412,6 +452,9 @@ app.get('/users/me/kit-status', authenticateToken, async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
         res.json(rows[0]);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({ has_purchased_kit: false, kit_type: null, kit_purchased_at: null, first_order_completed: false });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar status do kit' });
     }
@@ -472,6 +515,9 @@ app.get('/kits', async (req, res) => {
         const { rows } = await db.query('SELECT * FROM kits WHERE active = true ORDER BY price ASC');
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json([]);
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar kits' });
     }
@@ -490,6 +536,9 @@ app.get('/referral/validate/:code', async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ valid: false, message: 'Codigo invalido' });
         res.json({ valid: true, referrerName: rows[0].name });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(404).json({ valid: false, message: 'Codigo invalido' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao validar codigo' });
     }
@@ -522,6 +571,9 @@ app.get('/users/me/referral-code', authenticateToken, async (req, res) => {
 
         res.json({ referralCode: code });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({ referralCode: null });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao gerar codigo de indicacao' });
     }
@@ -537,6 +589,10 @@ app.get('/users/me/referrals', authenticateToken, async (req, res) => {
         );
         res.json(rows);
     } catch (err) {
+        // Table may not exist yet if setup_db hasn't been run
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json([]);
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar indicacoes' });
     }
@@ -561,6 +617,10 @@ app.get('/users/me/commissions', authenticateToken, async (req, res) => {
             commissions
         });
     } catch (err) {
+        // Tables/columns may not exist yet if setup_db hasn't been run
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({ balance: 0, commissions: [] });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar comissoes' });
     }
@@ -585,6 +645,9 @@ app.post('/users/me/commissions/apply', authenticateToken, async (req, res) => {
 
         res.json({ applied: amount, newBalance: balance - amount });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(400).json({ message: 'Saldo insuficiente' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao aplicar credito' });
     }
@@ -612,6 +675,9 @@ app.get('/users/me/achievements', authenticateToken, async (req, res) => {
 
         res.json(achievements);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json([]);
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar conquistas' });
     }
@@ -629,6 +695,9 @@ app.get('/users/me/points', authenticateToken, async (req, res) => {
             history: ledger
         });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({ total: 0, history: [] });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar pontos' });
     }
@@ -651,6 +720,7 @@ app.get('/rankings/top-sellers', authenticateToken, async (req, res) => {
         `);
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar ranking' });
     }
@@ -669,6 +739,7 @@ app.get('/rankings/top-referrers', authenticateToken, async (req, res) => {
         `);
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar ranking' });
     }
@@ -685,6 +756,7 @@ app.get('/rankings/top-engagement', authenticateToken, async (req, res) => {
         `);
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar ranking' });
     }
@@ -724,6 +796,13 @@ app.get('/users/me/dashboard', authenticateToken, async (req, res) => {
             achievementsEarned: parseInt(achievementsResult.rows[0].cnt)
         });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.json({
+                level: 'starter', levelDiscount: 0.30, points: 0, commissionBalance: 0,
+                totalAccumulated: 0, referralCode: null, totalOrders: 0, totalSales: 0,
+                monthOrders: 0, monthSales: 0, totalCommissions: 0, activeReferrals: 0, achievementsEarned: 0
+            });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar dashboard' });
     }
@@ -755,6 +834,7 @@ app.get('/users/me/commission-history', authenticateToken, async (req, res) => {
         );
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar historico de comissoes' });
     }
@@ -791,6 +871,9 @@ app.post('/affiliate/register', authenticateToken, async (req, res) => {
 
         res.json({ message: 'Afiliado registrado com sucesso', type });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(500).json({ message: 'Sistema de afiliados ainda nao configurado. Execute setup_db primeiro.' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao registrar afiliado' });
     }
@@ -819,6 +902,9 @@ app.get('/affiliate/me', authenticateToken, async (req, res) => {
             nextLevel: user.affiliate_level === 'conhecedor' ? 'to_gostando' : user.affiliate_level === 'to_gostando' ? 'associado' : null
         });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(404).json({ message: 'Nao e afiliado' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar perfil afiliado' });
     }
@@ -845,6 +931,9 @@ app.get('/affiliate/dashboard', authenticateToken, async (req, res) => {
             activeReferrals: parseInt(referralsResult.rows[0].cnt)
         });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(404).json({ message: 'Nao e afiliado' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar dashboard afiliado' });
     }
@@ -1372,6 +1461,26 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
             levelDistribution
         });
     } catch (err) {
+        // Fallback if level column doesn't exist yet
+        if (err.message && err.message.includes('does not exist')) {
+            try {
+                const [usersCount, ordersCount, pendingApprovals, recentOrders] = await Promise.all([
+                    db.query('SELECT COUNT(*) as total FROM users'),
+                    db.query('SELECT COUNT(*) as total FROM orders'),
+                    db.query("SELECT COUNT(*) as total FROM users WHERE approval_status = 'pending'"),
+                    db.query('SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 10')
+                ]);
+                return res.json({
+                    totalUsers: parseInt(usersCount.rows[0].total),
+                    totalOrders: parseInt(ordersCount.rows[0].total),
+                    pendingApprovals: parseInt(pendingApprovals.rows[0].total),
+                    recentOrders: recentOrders.rows,
+                    levelDistribution: {}
+                });
+            } catch (fallbackErr) {
+                console.error(fallbackErr);
+            }
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar dados do dashboard' });
     }
@@ -1403,6 +1512,25 @@ app.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
         const { rows } = await db.query(query, params);
         res.json(rows);
     } catch (err) {
+        // Fallback if new columns don't exist
+        if (err.message && err.message.includes('does not exist')) {
+            try {
+                let query = 'SELECT id, name, email, role, telefone, document_type, cpf, cnpj, company_name, profession, approval_status, approved_by, approved_at, rejection_reason, created_at FROM users';
+                const params = [];
+                const conditions = [];
+                const { filter } = req.query;
+                if (filter && filter !== 'all') {
+                    params.push(filter);
+                    conditions.push(`approval_status = $${params.length}`);
+                }
+                if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
+                query += ' ORDER BY created_at DESC';
+                const { rows } = await db.query(query, params);
+                return res.json(rows);
+            } catch (fallbackErr) {
+                console.error(fallbackErr);
+            }
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao listar usuarios' });
     }
@@ -1417,6 +1545,18 @@ app.get('/admin/users/:id', authenticateToken, requireAdmin, async (req, res) =>
         if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
         res.json(rows[0]);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            try {
+                const { rows } = await db.query(
+                    'SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, profession_other, approval_status, approved_by, approved_at, rejection_reason, created_at FROM users WHERE id = $1',
+                    [req.params.id]
+                );
+                if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+                return res.json(rows[0]);
+            } catch (fallbackErr) {
+                console.error(fallbackErr);
+            }
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar usuario' });
     }
@@ -1517,6 +1657,9 @@ app.put('/admin/users/:id/level', authenticateToken, requireAdmin, async (req, r
 
         res.json({ message: 'Nivel atualizado', oldLevel, newLevel: level });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(500).json({ message: 'Execute setup_db para habilitar o sistema de niveis' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao alterar nivel' });
     }
@@ -1531,6 +1674,7 @@ app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (
         );
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar historico de nivel' });
     }
@@ -1545,6 +1689,7 @@ app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) =
         );
         res.json(rows);
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
         res.status(500).json({ message: 'Erro ao listar afiliados' });
     }
@@ -1559,6 +1704,9 @@ app.put('/admin/affiliates/:id/status', authenticateToken, requireAdmin, async (
         );
         res.json({ message: 'Status atualizado' });
     } catch (err) {
+        if (err.message && err.message.includes('does not exist')) {
+            return res.status(500).json({ message: 'Execute setup_db para habilitar afiliados' });
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao atualizar afiliado' });
     }

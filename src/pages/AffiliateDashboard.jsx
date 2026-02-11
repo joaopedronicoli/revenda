@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { DollarSign, TrendingUp, Users, ShoppingBag, Copy, Share2, Check, ArrowUpRight } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import Layout from '../components/Layout'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -70,11 +69,9 @@ export default function AffiliateDashboard() {
 
     if (loading) {
         return (
-            <Layout>
-                <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-            </Layout>
+            <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
         )
     }
 
@@ -109,11 +106,10 @@ export default function AffiliateDashboard() {
     const levelInfo = levelConfig[level] || levelConfig.bronze
 
     return (
-        <Layout>
-            <div className="space-y-6">
-                {/* Header */}
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Painel de Afiliada</h1>
+        <div className="space-y-6">
+            {/* Header */}
+            <div>
+                <h1 className="text-2xl font-bold text-slate-900">Painel de Afiliada</h1>
                     <p className="text-slate-500">Acompanhe suas comissoes e indicacoes</p>
                 </div>
 
@@ -247,7 +243,6 @@ export default function AffiliateDashboard() {
                         </div>
                     )}
                 </div>
-            </div>
-        </Layout>
+        </div>
     )
 }

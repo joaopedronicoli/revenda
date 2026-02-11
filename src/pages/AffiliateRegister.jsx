@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Star, Zap, Gift, CheckCircle, ArrowRight } from 'lucide-react'
 import api from '../services/api'
-import Layout from '../components/Layout'
 
 const tracks = [
     {
@@ -85,8 +84,7 @@ export default function AffiliateRegister() {
     }
 
     return (
-        <Layout>
-            <div className="space-y-6 max-w-4xl mx-auto">
+        <div className="space-y-6 max-w-4xl mx-auto">
                 {/* Header */}
                 <div className="text-center">
                     <h1 className="text-2xl font-bold text-slate-900">Programa de Afiliados</h1>
@@ -175,7 +173,6 @@ export default function AffiliateRegister() {
                         )}
                     </button>
                 </div>
-            </div>
-        </Layout>
+        </div>
     )
 }

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { DollarSign, TrendingUp, Users, Zap, Package } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import Layout from '../components/Layout'
 import LevelProgressBar from '../components/LevelProgressBar'
 import AchievementBadge from '../components/AchievementBadge'
 
@@ -84,17 +83,14 @@ export default function ResellerDashboard() {
 
     if (loading) {
         return (
-            <Layout>
-                <div className="flex items-center justify-center h-64">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-            </Layout>
+            <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
         )
     }
 
     return (
-        <Layout>
-            <div className="space-y-6">
+        <div className="space-y-6">
                 {/* Header */}
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">
@@ -174,7 +170,6 @@ export default function ResellerDashboard() {
                         </div>
                     )}
                 </div>
-            </div>
-        </Layout>
+        </div>
     )
 }

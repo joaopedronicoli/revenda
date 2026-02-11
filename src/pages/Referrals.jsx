@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Copy, Share2, Users, DollarSign, Check, Clock } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
-import Layout from '../components/Layout'
 
 const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -77,11 +76,10 @@ export default function Referrals() {
     }
 
     return (
-        <Layout>
-            <div className="space-y-6">
-                {/* Header */}
-                <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Indicacoes</h1>
+        <div className="space-y-6">
+            {/* Header */}
+            <div>
+                <h1 className="text-2xl font-bold text-slate-900">Indicacoes</h1>
                     <p className="text-slate-500">Indique amigas e ganhe comissoes sobre as vendas delas</p>
                 </div>
 
@@ -242,7 +240,6 @@ export default function Referrals() {
                         </div>
                     )}
                 </div>
-            </div>
-        </Layout>
+        </div>
     )
 }

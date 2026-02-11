@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Trophy, ShoppingBag, UserPlus, Zap } from 'lucide-react'
 import api from '../services/api'
-import Layout from '../components/Layout'
 import LevelBadge from '../components/LevelBadge'
 import PointsDisplay from '../components/PointsDisplay'
 
@@ -174,10 +173,9 @@ export default function Rankings() {
     }
 
     return (
-        <Layout>
-            <div className="space-y-6">
-                {/* Header */}
-                <div className="flex items-center gap-3">
+        <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center gap-3">
                     <Trophy className="w-8 h-8 text-yellow-500" />
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Rankings</h1>
@@ -218,7 +216,6 @@ export default function Rankings() {
                         renderTable()
                     )}
                 </div>
-            </div>
-        </Layout>
+        </div>
     )
 }

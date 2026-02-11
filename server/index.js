@@ -2360,37 +2360,50 @@ app.post('/auth/reset-password', async (req, res) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if (decoded.type !== 'password-reset') {
+
+        // Aceitar tokens gerados pela revenda (password-reset) ou pelo central-pelg (reset)
+        if (decoded.type !== 'password-reset' && decoded.type !== 'reset') {
             return res.status(400).json({ message: 'Token invalido' });
         }
 
+        // Compatibilidade: revenda usa userId, central-pelg usa id
+        const tokenUserId = decoded.userId || decoded.id;
+        const tokenEmail = decoded.email;
+
         const { rows } = await db.query(
-            'SELECT id, email FROM users WHERE id = $1 AND reset_token = $2 AND reset_token_expires > NOW()',
-            [decoded.userId, token]
+            'SELECT id, email FROM users WHERE (id = $1 OR central_user_id = $1) AND reset_token = $2 AND reset_token_expires > NOW()',
+            [tokenUserId, token]
         );
 
         if (rows.length === 0) {
             return res.status(400).json({ message: 'Token expirado ou invalido' });
         }
 
+        const user = rows[0];
+
         // Chamar central-pelg para trocar a senha
         const centralApiUrl = process.env.CENTRAL_API_URL || 'https://central.pelg.com.br';
         const axios = require('axios');
+
+        console.log(`[reset-password] Chamando central-pelg para email=${tokenEmail}, url=${centralApiUrl}/internal/change-password`);
+
         const response = await axios.post(`${centralApiUrl}/internal/change-password`, {
-            email: decoded.email,
+            email: tokenEmail,
             newPassword
         }, {
-            headers: { 'X-Internal-Key': process.env.INTERNAL_API_KEY }
+            headers: { 'X-Internal-Key': process.env.INTERNAL_API_KEY },
+            timeout: 10000
         });
 
         if (!response.data.success) {
+            console.error('[reset-password] Central retornou erro:', response.data);
             return res.status(500).json({ message: 'Erro ao alterar senha no servidor central' });
         }
 
         // Limpar token de reset
         await db.query(
             'UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = $1',
-            [decoded.userId]
+            [user.id]
         );
 
         res.json({ message: 'Senha alterada com sucesso!' });
@@ -2398,7 +2411,10 @@ app.post('/auth/reset-password', async (req, res) => {
         if (err.name === 'TokenExpiredError') {
             return res.status(400).json({ message: 'Token expirado' });
         }
-        console.error(err);
+        console.error('[reset-password] Erro:', err.message);
+        if (err.response) {
+            console.error('[reset-password] Response status:', err.response.status, 'data:', err.response.data);
+        }
         res.status(500).json({ message: 'Erro ao resetar senha' });
     }
 });

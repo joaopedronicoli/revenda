@@ -35,6 +35,7 @@ export default function UsersManagement() {
     const [showRejectForm, setShowRejectForm] = useState(false)
     const [levelHistory, setLevelHistory] = useState([])
     const [showLevelHistory, setShowLevelHistory] = useState(false)
+    const [pendingLevel, setPendingLevel] = useState(null)
 
     useEffect(() => {
         loadUsers()
@@ -288,7 +289,7 @@ export default function UsersManagement() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <button
-                                                    onClick={() => { setSelectedUser(user); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); }}
+                                                    onClick={() => { setSelectedUser(user); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); setPendingLevel(null); }}
                                                     className="text-sm font-medium text-primary hover:text-primary-dark"
                                                 >
                                                     Gerenciar
@@ -313,7 +314,7 @@ export default function UsersManagement() {
                                     Gerenciar Usuario
                                 </h2>
                                 <button
-                                    onClick={() => { setSelectedUser(null); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); }}
+                                    onClick={() => { setSelectedUser(null); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); setPendingLevel(null); }}
                                     className="text-slate-400 hover:text-slate-600"
                                 >
                                     X
@@ -361,11 +362,13 @@ export default function UsersManagement() {
                                         {Object.entries(levelConfig).map(([key, config]) => (
                                             <button
                                                 key={key}
-                                                onClick={() => updateUserLevel(selectedUser.id, key)}
+                                                onClick={() => setPendingLevel(key)}
                                                 disabled={updating || (selectedUser.level || 'starter') === key}
                                                 className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 text-sm ${
                                                     (selectedUser.level || 'starter') === key
                                                         ? 'bg-slate-800 text-white'
+                                                        : pendingLevel === key
+                                                        ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-400'
                                                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                                                 }`}
                                             >
@@ -373,6 +376,34 @@ export default function UsersManagement() {
                                             </button>
                                         ))}
                                     </div>
+
+                                    {/* Level Change Confirmation */}
+                                    {pendingLevel && (
+                                        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                            <p className="text-sm text-amber-800 mb-3">
+                                                Alterar nivel de <strong>{levelConfig[selectedUser.level || 'starter']?.label}</strong> para <strong>{levelConfig[pendingLevel]?.label}</strong>?
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={async () => {
+                                                        await updateUserLevel(selectedUser.id, pendingLevel)
+                                                        setSelectedUser(prev => prev ? { ...prev, level: pendingLevel } : null)
+                                                        setPendingLevel(null)
+                                                    }}
+                                                    disabled={updating}
+                                                    className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 text-sm font-medium"
+                                                >
+                                                    {updating ? 'Alterando...' : 'Confirmar'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setPendingLevel(null)}
+                                                    className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 text-sm"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Level History */}
                                     {showLevelHistory && levelHistory.length > 0 && (

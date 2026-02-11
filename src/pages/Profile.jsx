@@ -1,7 +1,7 @@
 import { User, Package, MapPin, LogOut, ShoppingBag } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import OrderHistory from '../components/OrderHistory'
 import ProfileEditor from '../components/ProfileEditor'
 import AddressManager from '../components/AddressManager'
@@ -9,7 +9,8 @@ import AddressManager from '../components/AddressManager'
 export default function Profile() {
     const { user, logout } = useAuth()
     const navigate = useNavigate()
-    const [activeTab, setActiveTab] = useState('orders')
+    const [searchParams] = useSearchParams()
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'orders')
 
     const handleLogout = async () => {
         await logout()

@@ -1597,6 +1597,16 @@ app.post('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
             values.push(affiliate_type);
         }
 
+        // Gerar referral_code automaticamente se aprovado
+        const finalStatus = approval_status || 'approved';
+        if (finalStatus === 'approved') {
+            paramCount++;
+            query += `, referral_code`;
+            const code = generateReferralCode(name);
+            placeholders += `, $${paramCount}`;
+            values.push(code);
+        }
+
         query += `) VALUES (${placeholders}) RETURNING *`;
 
         const { rows } = await db.query(query, values);
@@ -1637,6 +1647,28 @@ app.put('/admin/users/:id/approve', authenticateToken, requireAdmin, async (req,
                 values
             );
             if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+
+            // Gerar referral_code automaticamente ao aprovar
+            if (status === 'approved') {
+                try {
+                    const code = generateReferralCode(rows[0].name);
+                    let attempts = 0;
+                    let saved = false;
+                    let finalCode = code;
+                    while (attempts < 5 && !saved) {
+                        try {
+                            await db.query('UPDATE users SET referral_code = $1 WHERE id = $2 AND (referral_code IS NULL OR referral_code = \'\')', [finalCode, req.params.id]);
+                            saved = true;
+                        } catch (e) {
+                            finalCode = generateReferralCode(rows[0].name);
+                            attempts++;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Erro ao gerar referral_code na aprovacao:', e.message);
+                }
+            }
+
             res.json(rows[0]);
             return;
         }

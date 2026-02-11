@@ -6,9 +6,9 @@
 
 set -e
 
-STACK_NAME="patricia-elias"
-BACKEND_IMAGE="patricia-elias-backend"
-FRONTEND_IMAGE="patricia-elias-reseller-app"
+STACK_NAME="revenda"
+BACKEND_IMAGE="revenda-backend"
+FRONTEND_IMAGE="revenda-frontend"
 
 echo "🚀 Deploy Script - Revenda Patricia Elias"
 echo "==========================================="

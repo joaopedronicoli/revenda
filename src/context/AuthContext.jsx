@@ -36,6 +36,34 @@ export const AuthProvider = ({ children }) => {
     }, [])
 
     const login = async (email, password) => {
+        // 1. Tentar login via WordPress (patriciaelias.com.br)
+        try {
+            const wpResponse = await fetch('https://patriciaelias.com.br/wp-json/jwt-auth/v1/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({ username: email, password }),
+            })
+
+            const wpData = await wpResponse.json()
+
+            if (wpResponse.ok && wpData?.token) {
+                // 2. Trocar token WordPress por JWT local no central-pelg
+                const response = await centralApi.post('/auth/wordpress-token', {
+                    email: wpData.user_email,
+                    name: wpData.user_display_name,
+                    wpToken: wpData.token
+                })
+
+                const { token, user: userData } = response.data
+                salvarCriptografado(AUTH_KEY, { token, user: userData })
+                setUser(userData)
+                return { user: userData }
+            }
+        } catch (wpErr) {
+            console.warn('WordPress login falhou, tentando login local:', wpErr.message)
+        }
+
+        // 3. Fallback: login local no central-pelg
         const response = await centralApi.post('/auth/login', { email, password })
         const { token, user: userData } = response.data
 

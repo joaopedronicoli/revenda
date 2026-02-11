@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useNavigate, Link } from 'react-router-dom'
-import { Loader2, ChevronRight, Check, MapPin, Eye, EyeOff } from 'lucide-react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
+import { Loader2, ChevronRight, Check, MapPin, Eye, EyeOff, UserPlus } from 'lucide-react'
+import api from '../services/api'
 
 export default function Register() {
     const { register } = useAuth()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [step, setStep] = useState(1)
@@ -14,6 +16,8 @@ export default function Register() {
     const [documentError, setDocumentError] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+    const [referralValid, setReferralValid] = useState(null)
+    const [referralLoading, setReferralLoading] = useState(false)
 
     // Form Data
     const [formData, setFormData] = useState({
@@ -36,6 +40,7 @@ export default function Register() {
         professionOther: '',
         cnpj: '',
         companyName: '',
+        referralCode: '',
         survey: {
             alreadySells: '',
             currentProducts: '',
@@ -47,6 +52,31 @@ export default function Register() {
             termsAccepted: false
         }
     })
+
+    // Load referral code from URL param
+    useEffect(() => {
+        const ref = searchParams.get('ref')
+        if (ref) {
+            setFormData(prev => ({ ...prev, referralCode: ref }))
+            validateReferralCode(ref)
+        }
+    }, [searchParams])
+
+    const validateReferralCode = async (code) => {
+        if (!code || code.length < 3) {
+            setReferralValid(null)
+            return
+        }
+        setReferralLoading(true)
+        try {
+            const { data } = await api.get(`/referral/validate/${code}`)
+            setReferralValid(data.valid)
+        } catch {
+            setReferralValid(false)
+        } finally {
+            setReferralLoading(false)
+        }
+    }
 
     // Fetch address from CEP
     const fetchAddressFromCep = async (cep) => {
@@ -223,7 +253,8 @@ export default function Register() {
                 profession: formData.profession,
                 professionOther: formData.professionOther,
                 cnpj: formData.cnpj,
-                companyName: formData.companyName
+                companyName: formData.companyName,
+                referralCode: formData.referralCode || undefined
             }
 
             const { user } = await register(formData.email, formData.password, registrationData)
@@ -420,7 +451,42 @@ export default function Register() {
                                         <p className="text-xs text-red-500 mt-1">As senhas não coincidem</p>
                                     )}
                                     {formData.confirmPassword && formData.password === formData.confirmPassword && formData.password.length >= 6 && (
-                                        <p className="text-xs text-green-600 mt-1">✓ As senhas coincidem</p>
+                                        <p className="text-xs text-green-600 mt-1">As senhas coincidem</p>
+                                    )}
+                                </div>
+
+                                {/* Referral Code */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        Codigo de Indicacao (opcional)
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            name="referralCode"
+                                            value={formData.referralCode}
+                                            onChange={(e) => {
+                                                handleChange(e)
+                                                if (e.target.value.length >= 3) {
+                                                    validateReferralCode(e.target.value)
+                                                } else {
+                                                    setReferralValid(null)
+                                                }
+                                            }}
+                                            className="w-full px-4 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                            placeholder="PE-NOME1234"
+                                        />
+                                        {referralLoading && (
+                                            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />
+                                        )}
+                                        {!referralLoading && referralValid === true && (
+                                            <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500" />
+                                        )}
+                                    </div>
+                                    {referralValid === true && (
+                                        <p className="text-xs text-green-600 mt-1">Codigo valido! Voce recebera beneficios de indicacao.</p>
+                                    )}
+                                    {referralValid === false && formData.referralCode && (
+                                        <p className="text-xs text-red-500 mt-1">Codigo de indicacao invalido</p>
                                     )}
                                 </div>
                             </div>

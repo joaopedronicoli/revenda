@@ -64,6 +64,23 @@ const clearCartTracking = async () => {
 
 export const useCartStore = create((set, get) => ({
     cart: loadCartFromStorage(),
+
+    // Dynamic discount from user level (set by AuthContext)
+    userDiscount: 0.30,
+    setUserDiscount: (discount) => set({ userDiscount: discount }),
+
+    // Kit selection for first order
+    selectedKit: null,
+    setSelectedKit: (kit) => set({ selectedKit: kit }),
+
+    // First order flag (set by AuthContext)
+    isFirstOrder: true,
+    setIsFirstOrder: (value) => set({ isFirstOrder: value }),
+
+    // Commission credit to apply
+    commissionCredit: 0,
+    setCommissionCredit: (value) => set({ commissionCredit: value }),
+
     addToCart: (product) => set((state) => {
         const existing = state.cart.find((item) => item.id === product.id)
         let newCart
@@ -108,44 +125,32 @@ export const useCartStore = create((set, get) => ({
     clearCart: () => {
         saveCartToStorage([])
         clearCartTracking()
-        return set({ cart: [] })
+        return set({ cart: [], selectedKit: null, commissionCredit: 0 })
     },
 
     // Computed values with Complex Logic
     getSummary: () => {
-        const { cart } = get()
+        const { cart, userDiscount, selectedKit, isFirstOrder, commissionCredit } = get()
 
         // Constants
         const MODELAT_ID = 8
         const TEST_PRODUCT_ID = 999 // Produto de teste - sem desconto
         const DISCOUNT_MODELAT = 0.70 // 70% OFF
-        const DISCOUNT_STANDARD_BASE = 0.30 // 30% OFF
-        const DISCOUNT_STANDARD_HIGH = 0.35 // 35% OFF
-        const HIGH_TICKET_THRESHOLD = 10000
         const PIX_DISCOUNT_RATE = 0.03 // 3% desconto PIX
 
-        // 1. Calculate Table Total
+        // Minimum order values
+        const MIN_ORDER_FIRST = 897
+        const MIN_ORDER_RECURRING = 600
+        const minimumOrder = isFirstOrder ? MIN_ORDER_FIRST : MIN_ORDER_RECURRING
+
+        // Use dynamic discount from user level
+        const currentStandardDiscount = userDiscount
+
+        // 1. Calculate Table Total (products only, no kit)
         const totalTable = cart.reduce((acc, item) => acc + (item.tablePrice * item.quantity), 0)
 
-        // 2. Calculate Preliminary Total (to check High Ticket threshold)
-        let preliminaryTotal = 0
-        cart.forEach(item => {
-            if (item.id === TEST_PRODUCT_ID) {
-                // Produto teste: sem desconto
-                preliminaryTotal += item.tablePrice * item.quantity
-            } else if (item.id === MODELAT_ID) {
-                preliminaryTotal += (item.tablePrice * (1 - DISCOUNT_MODELAT)) * item.quantity
-            } else {
-                preliminaryTotal += (item.tablePrice * (1 - DISCOUNT_STANDARD_BASE)) * item.quantity
-            }
-        })
-
-        // 3. Determine if High Ticket
-        const isHighTicket = preliminaryTotal > HIGH_TICKET_THRESHOLD
-
-        // 4. Calculate Final Total with correct rates
+        // 2. Calculate Total with Discount
         let totalWithDiscount = 0
-        const currentStandardDiscount = isHighTicket ? DISCOUNT_STANDARD_HIGH : DISCOUNT_STANDARD_BASE
 
         cart.forEach(item => {
             if (item.id === TEST_PRODUCT_ID) {
@@ -157,6 +162,17 @@ export const useCartStore = create((set, get) => ({
                 totalWithDiscount += (item.tablePrice * (1 - currentStandardDiscount)) * item.quantity
             }
         })
+
+        // Product total (before kit)
+        const productTotal = totalWithDiscount
+
+        // 3. Add kit price if selected (first order only)
+        const kitPrice = (isFirstOrder && selectedKit) ? selectedKit.price : 0
+        totalWithDiscount += kitPrice
+
+        // 4. Apply commission credit
+        const appliedCredit = Math.min(commissionCredit, totalWithDiscount)
+        totalWithDiscount -= appliedCredit
 
         // 5. Payment Calculations
         const pixDiscount = totalWithDiscount * PIX_DISCOUNT_RATE
@@ -170,22 +186,26 @@ export const useCartStore = create((set, get) => ({
         }
         const maxInstallments = getMaxInstallments(totalWithDiscount)
 
-        // 7. Check if close to unlocking 35% discount
-        const remainingToUnlock35 = Math.max(0, HIGH_TICKET_THRESHOLD - preliminaryTotal)
-        const isCloseToUnlock = remainingToUnlock35 > 0 && remainingToUnlock35 <= 2000
+        // 7. Check minimum order (based on product total only, without kit)
+        const meetsMinimum = productTotal >= minimumOrder
+        const remainingToMinimum = Math.max(0, minimumOrder - productTotal)
 
         return {
             totalTable,
             totalWithDiscount,
             totalWithPix,
             pixDiscount,
+            productTotal,
+            kitPrice,
+            appliedCredit,
             itemCount: cart.reduce((acc, item) => acc + item.quantity, 0),
-            isHighTicket,
             discountStandard: currentStandardDiscount,
             discountModelat: DISCOUNT_MODELAT,
             maxInstallments,
-            remainingToUnlock35,
-            isCloseToUnlock
+            minimumOrder,
+            meetsMinimum,
+            remainingToMinimum,
+            isFirstOrder
         }
     }
 }))

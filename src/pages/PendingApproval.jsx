@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Clock, Mail, LogOut, RefreshCw, CheckCircle } from 'lucide-react'
+import { Clock, Mail, LogOut, RefreshCw, CheckCircle, XCircle, ShieldOff, Send } from 'lucide-react'
 import api from '../services/api'
 
 export default function PendingApproval() {
     const { user, logout, approvalStatus, refreshApprovalStatus } = useAuth()
     const navigate = useNavigate()
     const [checking, setChecking] = useState(false)
+    const [requesting, setRequesting] = useState(false)
     const [showApprovedModal, setShowApprovedModal] = useState(false)
     const [showStillPendingMessage, setShowStillPendingMessage] = useState(false)
+    const [requestSentMessage, setRequestSentMessage] = useState(false)
     const [countdown, setCountdown] = useState(7)
 
     // Countdown timer when approved
@@ -34,13 +36,11 @@ export default function PendingApproval() {
         setShowStillPendingMessage(false)
 
         try {
-            // Check directly from API
-            const response = await api.get('/auth/me')
+            const response = await api.get('/users/me')
             const userData = response.data
 
             if (userData.approval_status === 'approved') {
                 setShowApprovedModal(true)
-                // Refresh context so ProtectedRoute picks it up
                 await refreshApprovalStatus()
             } else {
                 setShowStillPendingMessage(true)
@@ -55,37 +55,106 @@ export default function PendingApproval() {
         }
     }
 
+    const requestReapproval = async () => {
+        setRequesting(true)
+        try {
+            await api.post('/users/me/request-approval')
+            setRequestSentMessage(true)
+            await refreshApprovalStatus()
+            setTimeout(() => setRequestSentMessage(false), 5000)
+        } catch (error) {
+            console.error('Error requesting reapproval:', error)
+            alert('Erro ao reenviar solicitacao. Tente novamente.')
+        } finally {
+            setRequesting(false)
+        }
+    }
+
+    const isSuspended = approvalStatus === 'suspended'
+    const isRejected = approvalStatus === 'rejected'
+    const isPending = !isSuspended && !isRejected
+
+    const getStatusConfig = () => {
+        if (isSuspended) {
+            return {
+                icon: ShieldOff,
+                iconBg: 'bg-red-100 dark:bg-red-900/30',
+                iconColor: 'text-red-600 dark:text-red-500',
+                title: 'Cadastro Suspenso',
+                bgGradient: 'from-red-50 to-orange-50 dark:from-slate-900 dark:to-slate-800',
+                borderColor: 'border-red-200 dark:border-red-900',
+                infoBg: 'bg-red-50 dark:bg-red-900/20',
+                infoBorder: 'border-red-200 dark:border-red-800',
+                message: 'Seu cadastro foi suspenso pela administracao.',
+                submessage: 'Entre em contato com nosso suporte para mais informacoes sobre o motivo da suspensao.'
+            }
+        }
+        if (isRejected) {
+            return {
+                icon: XCircle,
+                iconBg: 'bg-red-100 dark:bg-red-900/30',
+                iconColor: 'text-red-600 dark:text-red-500',
+                title: 'Cadastro Nao Aprovado',
+                bgGradient: 'from-red-50 to-orange-50 dark:from-slate-900 dark:to-slate-800',
+                borderColor: 'border-red-200 dark:border-red-900',
+                infoBg: 'bg-red-50 dark:bg-red-900/20',
+                infoBorder: 'border-red-200 dark:border-red-800',
+                message: 'Seu cadastro nao foi aprovado.',
+                submessage: user?.rejection_reason
+                    ? `Motivo: ${user.rejection_reason}`
+                    : 'Voce pode reenviar sua solicitacao de aprovacao ou entrar em contato com nosso suporte.'
+            }
+        }
+        return {
+            icon: Clock,
+            iconBg: 'bg-yellow-100 dark:bg-yellow-900/30',
+            iconColor: 'text-yellow-600 dark:text-yellow-500',
+            title: 'Cadastro em Analise',
+            bgGradient: 'from-yellow-50 to-orange-50 dark:from-slate-900 dark:to-slate-800',
+            borderColor: 'border-yellow-200 dark:border-yellow-900',
+            infoBg: 'bg-yellow-50 dark:bg-yellow-900/20',
+            infoBorder: 'border-yellow-200 dark:border-yellow-800',
+            message: 'Seu cadastro foi recebido e esta sendo analisado por nossa equipe.',
+            submessage: 'Em breve voce recebera um email de confirmacao e podera acessar nossa loja e fazer seus pedidos.'
+        }
+    }
+
+    const config = getStatusConfig()
+    const StatusIcon = config.icon
+
     return (
-        <div className="min-h-screen bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-4 font-sans">
+        <div className={`min-h-screen bg-gradient-to-br ${config.bgGradient} flex items-center justify-center px-4 font-sans`}>
             <div className="max-w-2xl w-full">
-                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 md:p-12 border border-yellow-200 dark:border-yellow-900">
+                <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 md:p-12 border ${config.borderColor}`}>
                     <div className="flex justify-center mb-6">
-                        <div className="bg-yellow-100 dark:bg-yellow-900/30 p-6 rounded-full">
-                            <Clock className="w-16 h-16 text-yellow-600 dark:text-yellow-500" />
+                        <div className={`${config.iconBg} p-6 rounded-full`}>
+                            <StatusIcon className={`w-16 h-16 ${config.iconColor}`} />
                         </div>
                     </div>
 
                     <h1 className="text-3xl md:text-4xl font-bold text-center text-slate-900 dark:text-white mb-4">
-                        Cadastro em Analise
+                        {config.title}
                     </h1>
 
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-6 mb-6">
+                    <div className={`${config.infoBg} border ${config.infoBorder} rounded-lg p-6 mb-6`}>
                         <p className="text-center text-slate-700 dark:text-slate-300 text-lg mb-4">
                             Ola, <span className="font-semibold">{user?.name || user?.email}</span>!
                         </p>
                         <p className="text-center text-slate-600 dark:text-slate-400 mb-2">
-                            Seu cadastro foi recebido e esta sendo analisado por nossa equipe.
+                            {config.message}
                         </p>
                         <p className="text-center text-slate-600 dark:text-slate-400">
-                            Em breve voce recebera um <strong>email de confirmacao</strong> e podera acessar nossa loja e fazer seus pedidos.
+                            {config.submessage}
                         </p>
                     </div>
 
-                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 mb-6">
-                        <p className="text-center text-sm text-slate-600 dark:text-slate-400">
-                            Tempo estimado de analise: <strong>ate 24 horas uteis</strong>
-                        </p>
-                    </div>
+                    {isPending && (
+                        <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 mb-6">
+                            <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+                                Tempo estimado de analise: <strong>ate 24 horas uteis</strong>
+                            </p>
+                        </div>
+                    )}
 
                     {showStillPendingMessage && (
                         <div className="bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-300 px-4 py-3 rounded-lg mb-3 text-center animate-slideDown">
@@ -93,17 +162,39 @@ export default function PendingApproval() {
                         </div>
                     )}
 
-                    <button
-                        type="button"
-                        onClick={checkApprovalStatus}
-                        disabled={checking}
-                        className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors mb-6 disabled:cursor-not-allowed"
-                    >
-                        <RefreshCw className={`w-5 h-5 ${checking ? 'animate-spin' : ''}`} />
-                        {checking ? 'Verificando...' : 'Verificar Aprovacao'}
-                    </button>
+                    {requestSentMessage && (
+                        <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 text-green-800 dark:text-green-300 px-4 py-3 rounded-lg mb-3 text-center animate-slideDown">
+                            Solicitacao reenviada com sucesso! Aguarde a analise.
+                        </div>
+                    )}
 
-                    <div className="border-t border-slate-200 dark:border-slate-700 pt-6 mb-6">
+                    {/* Botao verificar - para pending */}
+                    {isPending && (
+                        <button
+                            type="button"
+                            onClick={checkApprovalStatus}
+                            disabled={checking}
+                            className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors mb-3 disabled:cursor-not-allowed"
+                        >
+                            <RefreshCw className={`w-5 h-5 ${checking ? 'animate-spin' : ''}`} />
+                            {checking ? 'Verificando...' : 'Verificar Aprovacao'}
+                        </button>
+                    )}
+
+                    {/* Botao reenviar - para rejected */}
+                    {isRejected && (
+                        <button
+                            type="button"
+                            onClick={requestReapproval}
+                            disabled={requesting}
+                            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors mb-3 disabled:cursor-not-allowed"
+                        >
+                            <Send className={`w-5 h-5 ${requesting ? 'animate-pulse' : ''}`} />
+                            {requesting ? 'Reenviando...' : 'Reenviar Solicitacao de Aprovacao'}
+                        </button>
+                    )}
+
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-6 mb-6 mt-3">
                         <p className="text-center text-sm text-slate-500 dark:text-slate-400 mb-3">
                             Precisa de ajuda?
                         </p>
@@ -126,9 +217,11 @@ export default function PendingApproval() {
                     </button>
                 </div>
 
-                <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-6">
-                    Voce recebera um email em <strong>{user?.email}</strong>
-                </p>
+                {isPending && (
+                    <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-6">
+                        Voce recebera um email em <strong>{user?.email}</strong>
+                    </p>
+                )}
             </div>
 
             {showApprovedModal && (

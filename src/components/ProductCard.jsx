@@ -11,12 +11,12 @@ const formatPrice = (price) => {
 
 export default function ProductCard({ product }) {
     const { cart, addToCart, removeFromCart, updateQuantity, getSummary } = useCartStore()
-    const { isApproved } = useAuth()
+    const { isApproved, user } = useAuth()
     const cartItem = cart.find(item => item.id === product.id)
     const quantity = cartItem?.quantity || 0
 
-    // Connect to global discount logic
-    const { isHighTicket, discountStandard, discountModelat } = getSummary()
+    // Connect to global discount logic (now uses dynamic user level discount)
+    const { discountStandard, discountModelat } = getSummary()
 
     // Determine Rate for this product
     let discountRate = 0
@@ -27,7 +27,7 @@ export default function ProductCard({ product }) {
         discountRate = discountModelat
         discountedPrice = product.tablePrice * (1 - discountRate)
     } else {
-        // Produtos normais
+        // Produtos normais - uses level-based discount
         discountRate = discountStandard
         discountedPrice = product.tablePrice * (1 - discountRate)
     }

@@ -9,6 +9,11 @@ import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import OrderReview from './pages/OrderReview'
 import Confirmation from './pages/Confirmation'
+import Referrals from './pages/Referrals'
+import Rankings from './pages/Rankings'
+import ResellerDashboard from './pages/ResellerDashboard'
+import AffiliateRegister from './pages/AffiliateRegister'
+import AffiliateDashboard from './pages/AffiliateDashboard'
 import Layout from './components/Layout'
 import AdminApp from './admin/AdminApp'
 
@@ -72,6 +77,46 @@ export default function App() {
               <ProtectedRoute>
                 <Layout>
                   <Confirmation />
+                </Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/referrals" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Referrals />
+                </Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/rankings" element={
+              <ProtectedRoute>
+                <Layout>
+                  <Rankings />
+                </Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/my-dashboard" element={
+              <ProtectedRoute>
+                <Layout>
+                  <ResellerDashboard />
+                </Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/affiliate/register" element={
+              <ProtectedRoute>
+                <Layout>
+                  <AffiliateRegister />
+                </Layout>
+              </ProtectedRoute>
+            } />
+
+            <Route path="/affiliate/dashboard" element={
+              <ProtectedRoute>
+                <Layout>
+                  <AffiliateDashboard />
                 </Layout>
               </ProtectedRoute>
             } />

@@ -12,6 +12,7 @@ import WebhookSettings from './pages/WebhookSettings'
 import AppSettings from './pages/AppSettings'
 import Documentation from './pages/Documentation'
 import CleanupDuplicates from './pages/CleanupDuplicates'
+import AffiliateManagement from './pages/AffiliateManagement'
 
 // Admin Protected Route
 function AdminProtectedRoute({ children, adminOnly = false }) {
@@ -50,6 +51,11 @@ export default function AdminApp() {
                     <Route path="users" element={<UsersManagement />} />
                     <Route path="abandoned-carts" element={<AbandonedCarts />} />
                     <Route path="documentation" element={<Documentation />} />
+                    <Route path="affiliates" element={
+                        <AdminProtectedRoute adminOnly>
+                            <AffiliateManagement />
+                        </AdminProtectedRoute>
+                    } />
                     <Route
                         path="cleanup"
                         element={

@@ -11,7 +11,8 @@ import {
     LogOut,
     ChevronLeft,
     ShoppingBag,
-    Book
+    Book,
+    UserCheck
 } from 'lucide-react'
 
 const menuItems = [
@@ -27,7 +28,7 @@ const menuItems = [
         path: '/admin/orders'
     },
     {
-        title: 'Usuários',
+        title: 'Usuarios',
         icon: Users,
         path: '/admin/users'
     },
@@ -37,7 +38,13 @@ const menuItems = [
         path: '/admin/abandoned-carts'
     },
     {
-        title: 'Documentação',
+        title: 'Afiliados',
+        icon: UserCheck,
+        path: '/admin/affiliates',
+        adminOnly: true
+    },
+    {
+        title: 'Documentacao',
         icon: Book,
         path: '/admin/documentation'
     },
@@ -54,7 +61,7 @@ const menuItems = [
         adminOnly: true
     },
     {
-        title: 'Configurações',
+        title: 'Configuracoes',
         icon: Settings,
         path: '/admin/settings',
         adminOnly: true

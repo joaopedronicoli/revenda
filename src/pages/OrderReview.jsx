@@ -4,20 +4,25 @@ import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cartStore'
 import { getAddresses, getDefaultAddress } from '../lib/database'
 import api from '../services/api'
-import { MapPin, Edit2, Plus, Package, Truck, AlertCircle, X, Clock } from 'lucide-react'
+import { MapPin, Edit2, Plus, Package, Truck, AlertCircle, X, Clock, Wallet, Gift } from 'lucide-react'
 import PaymentSelector from '../components/PaymentSelector'
 import { getDeliveryEstimate, getEstimatedDeliveryDate } from '../lib/deliveryEstimates'
+import KitSelector from '../components/KitSelector'
 
 export default function OrderReview() {
     const navigate = useNavigate()
     const { user } = useAuth()
-    const { cart, getSummary, clearCart } = useCartStore()
+    const { cart, getSummary, clearCart, selectedKit, setSelectedKit, commissionCredit, setCommissionCredit } = useCartStore()
     const [addresses, setAddresses] = useState([])
     const [selectedAddress, setSelectedAddress] = useState(null)
     const [paymentData, setPaymentData] = useState(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [orderCreated, setOrderCreated] = useState(false)
+    const [creditInput, setCreditInput] = useState('')
+
+    const isFirstOrder = !user?.first_order_completed
+    const userCommissionBalance = user?.commission_balance || 0
 
     useEffect(() => {
         loadAddressesAndCreateOrder()
@@ -29,15 +34,14 @@ export default function OrderReview() {
             const allAddresses = await getAddresses(user.id)
             setAddresses(allAddresses)
 
-            // Selecionar endereço padrão
+            // Selecionar endereco padrao
             const defaultAddr = allAddresses.find(a => a.is_default)
             const selectedAddr = defaultAddr || allAddresses[0] || null
             setSelectedAddress(selectedAddr)
 
-            // Verificar se já existe um pedido pendente para evitar duplicação
+            // Verificar se ja existe um pedido pendente para evitar duplicacao
             const existingOrderId = localStorage.getItem('pendingOrderId')
             if (existingOrderId) {
-                // Verificar se o pedido ainda existe e está pendente
                 try {
                     const { data: existingOrder } = await api.get(`/orders/${existingOrderId}`)
 
@@ -48,21 +52,26 @@ export default function OrderReview() {
                         setLoading(false)
                         return
                     } else {
-                        // Pedido não existe mais ou já foi pago, limpar
                         localStorage.removeItem('pendingOrderId')
                     }
                 } catch {
-                    // Pedido não encontrado, limpar
                     localStorage.removeItem('pendingOrderId')
                 }
             }
 
-            // SE TEM ENDEREÇO, JÁ CRIAR O PEDIDO AUTOMATICAMENTE (apenas uma vez)
+            // SE TEM ENDERECO, JA CRIAR O PEDIDO AUTOMATICAMENTE (apenas uma vez)
             if (selectedAddr && cart.length > 0 && !orderCreated) {
-                // Limpar qualquer pedido pendente órfão do usuário antes de criar novo
+                // Limpar qualquer pedido pendente orfao do usuario antes de criar novo
                 await api.delete('/orders/pending-orphans').catch(() => {})
 
                 const summary = getSummary()
+
+                // Validate kit requirement for first order
+                if (isFirstOrder && !selectedKit) {
+                    setLoading(false)
+                    return // Don't create order yet - user needs to select kit
+                }
+
                 const orderData = {
                     details: {
                         user_email: user.email,
@@ -75,23 +84,29 @@ export default function OrderReview() {
                             tablePrice: item.tablePrice,
                             reference_url: item.reference_url
                         })),
+                        kit: selectedKit ? { id: selectedKit.id, name: selectedKit.name, price: selectedKit.price } : null,
                         summary: {
                             totalTable: summary.totalTable,
                             totalWithDiscount: summary.totalWithDiscount,
+                            productTotal: summary.productTotal,
+                            kitPrice: summary.kitPrice,
+                            appliedCredit: summary.appliedCredit,
                             itemCount: summary.itemCount
                         }
                     },
                     total: summary.totalWithDiscount,
                     status: 'pending',
-                    address_id: selectedAddr.id
+                    address_id: selectedAddr.id,
+                    kit_id: selectedKit?.id || null,
+                    commission_credit: summary.appliedCredit || 0
                 }
 
                 const { data: order } = await api.post('/orders', orderData)
 
                 if (order) {
                     setPaymentData({ orderId: order.id })
-                    setOrderCreated(true) // Marcar como criado para evitar duplicação
-                    localStorage.setItem('pendingOrderId', order.id) // Salvar no localStorage
+                    setOrderCreated(true)
+                    localStorage.setItem('pendingOrderId', order.id)
                 }
             }
         } catch (error) {
@@ -101,17 +116,83 @@ export default function OrderReview() {
         }
     }
 
+    // Create order after kit selection (for first orders)
+    const createOrderWithKit = async () => {
+        if (!selectedAddress || cart.length === 0) return
+
+        try {
+            setLoading(true)
+            await api.delete('/orders/pending-orphans').catch(() => {})
+
+            const summary = getSummary()
+            const orderData = {
+                details: {
+                    user_email: user.email,
+                    user_name: user?.name || 'N/A',
+                    user_whatsapp: user?.phone || 'N/A',
+                    items: cart.map(item => ({
+                        id: item.id,
+                        name: item.name,
+                        quantity: item.quantity,
+                        tablePrice: item.tablePrice,
+                        reference_url: item.reference_url
+                    })),
+                    kit: selectedKit ? { id: selectedKit.id, name: selectedKit.name, price: selectedKit.price } : null,
+                    summary: {
+                        totalTable: summary.totalTable,
+                        totalWithDiscount: summary.totalWithDiscount,
+                        productTotal: summary.productTotal,
+                        kitPrice: summary.kitPrice,
+                        appliedCredit: summary.appliedCredit,
+                        itemCount: summary.itemCount
+                    }
+                },
+                total: summary.totalWithDiscount,
+                status: 'pending',
+                address_id: selectedAddress.id,
+                kit_id: selectedKit?.id || null,
+                commission_credit: summary.appliedCredit || 0
+            }
+
+            const { data: order } = await api.post('/orders', orderData)
+
+            if (order) {
+                setPaymentData({ orderId: order.id })
+                setOrderCreated(true)
+                localStorage.setItem('pendingOrderId', order.id)
+            }
+        } catch (err) {
+            console.error('Error creating order:', err)
+            setError(err.response?.data?.error || 'Erro ao criar pedido')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Auto-create order when kit is selected (first order) or immediately (recurring)
+    useEffect(() => {
+        if (!orderCreated && selectedAddress && cart.length > 0 && !loading) {
+            if (isFirstOrder && selectedKit) {
+                createOrderWithKit()
+            } else if (!isFirstOrder && !orderCreated) {
+                createOrderWithKit()
+            }
+        }
+    }, [selectedKit])
+
+    const handleApplyCredit = () => {
+        const amount = parseFloat(creditInput)
+        if (isNaN(amount) || amount <= 0) return
+        const maxCredit = Math.min(amount, userCommissionBalance)
+        setCommissionCredit(maxCredit)
+        setCreditInput('')
+    }
+
     const handlePaymentSuccess = (paymentResult) => {
-        // IMPORTANTE: Salvar orderId e navegar ANTES de limpar carrinho
-        // para evitar race condition com o check cart.length === 0
         localStorage.setItem('lastOrderId', paymentData.orderId)
-        localStorage.setItem('paymentCompleted', 'true') // Flag para evitar redirect
-        localStorage.removeItem('pendingOrderId') // Limpar pedido pendente
-
-        // Limpar carrinho
+        localStorage.setItem('paymentCompleted', 'true')
+        localStorage.removeItem('pendingOrderId')
         clearCart()
-
-        // Redirecionar para confirmação
         navigate('/confirmation')
     }
 
@@ -136,16 +217,14 @@ export default function OrderReview() {
         )
     }
 
-    // Verificar se carrinho está vazio MAS não é por causa de um pagamento completo
+    // Verificar se carrinho esta vazio MAS nao e por causa de um pagamento completo
     if (cart.length === 0) {
         const paymentCompleted = localStorage.getItem('paymentCompleted')
         if (paymentCompleted === 'true') {
-            // Pagamento foi concluído, limpar flag e deixar continuar para confirmation
             localStorage.removeItem('paymentCompleted')
             navigate('/confirmation')
             return null
         }
-        // Carrinho realmente vazio, voltar para cart
         navigate('/cart')
         return null
     }
@@ -195,30 +274,40 @@ export default function OrderReview() {
                 <div className="grid lg:grid-cols-3 gap-6">
                     {/* Main Content */}
                     <div className="lg:col-span-2 space-y-6">
+                        {/* Kit Selector - First Order Only */}
+                        {isFirstOrder && (
+                            <div className="bg-white rounded-xl p-6 border border-slate-200">
+                                <KitSelector
+                                    selectedKit={selectedKit}
+                                    onSelectKit={setSelectedKit}
+                                />
+                            </div>
+                        )}
+
                         {/* Delivery Address */}
                         <div className="bg-white rounded-xl p-6 border border-slate-200">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                                     <MapPin size={20} className="text-primary" />
-                                    Endereço de Entrega
+                                    Endereco de Entrega
                                 </h2>
                                 <button
                                     onClick={() => navigate('/profile?tab=addresses')}
                                     className="text-primary hover:text-primary-dark text-sm font-medium flex items-center gap-1"
                                 >
                                     <Plus size={16} />
-                                    Novo Endereço
+                                    Novo Endereco
                                 </button>
                             </div>
 
                             {addresses.length === 0 ? (
                                 <div className="text-center py-8">
-                                    <p className="text-slate-600 mb-4">Você ainda não tem endereços cadastrados.</p>
+                                    <p className="text-slate-600 mb-4">Voce ainda nao tem enderecos cadastrados.</p>
                                     <button
                                         onClick={() => navigate('/profile?tab=addresses')}
                                         className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
                                     >
-                                        Cadastrar Endereço
+                                        Cadastrar Endereco
                                     </button>
                                 </div>
                             ) : (
@@ -246,7 +335,7 @@ export default function OrderReview() {
                                                         </span>
                                                         {address.is_default && (
                                                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-full">
-                                                                Padrão
+                                                                Padrao
                                                             </span>
                                                         )}
                                                     </div>
@@ -272,11 +361,10 @@ export default function OrderReview() {
                             <div className="space-y-2">
                                 {user?.documentType === 'cnpj' ? (
                                     <>
-                                        {/* CNPJ: Mostrar Razão Social */}
                                         <div className="flex justify-between text-sm">
-                                            <span className="text-slate-600">Razão Social:</span>
+                                            <span className="text-slate-600">Razao Social:</span>
                                             <span className="font-medium text-slate-900">
-                                                {user?.companyName || 'Não informado'}
+                                                {user?.companyName || 'Nao informado'}
                                             </span>
                                         </div>
                                         <div className="flex justify-between text-sm">
@@ -288,11 +376,10 @@ export default function OrderReview() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* CPF: Mostrar Nome */}
                                         <div className="flex justify-between text-sm">
                                             <span className="text-slate-600">Nome:</span>
                                             <span className="font-medium text-slate-900">
-                                                {user?.name || 'Não informado'}
+                                                {user?.name || 'Nao informado'}
                                             </span>
                                         </div>
                                         <div className="flex justify-between text-sm">
@@ -305,6 +392,50 @@ export default function OrderReview() {
                                 )}
                             </div>
                         </div>
+
+                        {/* Commission Credit Section */}
+                        {userCommissionBalance > 0 && (
+                            <div className="bg-white rounded-xl p-6 border border-slate-200">
+                                <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                    <Wallet size={20} className="text-green-600" />
+                                    Usar Credito de Comissao
+                                </h2>
+                                <p className="text-sm text-slate-600 mb-3">
+                                    Saldo disponivel: <strong className="text-green-600">{formatCurrency(userCommissionBalance)}</strong>
+                                </p>
+                                {commissionCredit > 0 ? (
+                                    <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                                        <span className="text-sm text-green-800">
+                                            Credito aplicado: <strong>{formatCurrency(commissionCredit)}</strong>
+                                        </span>
+                                        <button
+                                            onClick={() => setCommissionCredit(0)}
+                                            className="text-sm text-red-500 hover:text-red-700"
+                                        >
+                                            Remover
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="number"
+                                            value={creditInput}
+                                            onChange={(e) => setCreditInput(e.target.value)}
+                                            placeholder={`Max ${formatCurrency(userCommissionBalance)}`}
+                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                                            max={userCommissionBalance}
+                                            step="0.01"
+                                        />
+                                        <button
+                                            onClick={handleApplyCredit}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                                        >
+                                            Aplicar
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Payment Method */}
                         <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -323,7 +454,9 @@ export default function OrderReview() {
                                 />
                             ) : (
                                 <div className="text-center py-8 text-slate-600">
-                                    Clique em "Continuar para Pagamento" para processar seu pedido
+                                    {isFirstOrder && !selectedKit
+                                        ? 'Selecione um kit inicial acima para continuar'
+                                        : 'Processando seu pedido...'}
                                 </div>
                             )}
                         </div>
@@ -346,6 +479,20 @@ export default function OrderReview() {
                                         </p>
                                     </div>
                                 ))}
+                                {selectedKit && (
+                                    <div className="flex justify-between items-center py-2 border-t-2 border-primary/20">
+                                        <div>
+                                            <p className="font-medium text-primary flex items-center gap-1">
+                                                <Gift size={16} />
+                                                {selectedKit.name}
+                                            </p>
+                                            <p className="text-sm text-slate-600">Kit Inicial</p>
+                                        </div>
+                                        <p className="font-semibold text-primary">
+                                            {formatCurrency(selectedKit.price)}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -357,21 +504,35 @@ export default function OrderReview() {
 
                             <div className="space-y-3 mb-4 pb-4 border-b border-slate-200">
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Subtotal</span>
+                                    <span className="text-slate-600">Subtotal (tabela)</span>
                                     <span className="font-medium">{formatCurrency(summary.totalTable)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Desconto</span>
+                                    <span className="text-slate-600">Desconto ({(summary.discountStandard * 100).toFixed(0)}%)</span>
                                     <span className="font-medium text-green-600">
-                                        -{formatCurrency(summary.totalTable - summary.totalWithDiscount)}
+                                        -{formatCurrency(summary.totalTable - summary.productTotal)}
                                     </span>
                                 </div>
+                                {summary.kitPrice > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600">Kit Inicial</span>
+                                        <span className="font-medium">{formatCurrency(summary.kitPrice)}</span>
+                                    </div>
+                                )}
+                                {summary.appliedCredit > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600">Credito Comissao</span>
+                                        <span className="font-medium text-green-600">
+                                            -{formatCurrency(summary.appliedCredit)}
+                                        </span>
+                                    </div>
+                                )}
                                 <div className="flex justify-between items-center bg-green-50 -mx-2 px-2 py-2 rounded-lg">
                                     <span className="text-sm font-medium text-green-800 flex items-center gap-1">
                                         <Truck size={16} />
                                         Frete
                                     </span>
-                                    <span className="font-bold text-green-800">GRÁTIS</span>
+                                    <span className="font-bold text-green-800">GRATIS</span>
                                 </div>
 
                                 {/* Delivery Estimate */}
@@ -385,7 +546,7 @@ export default function OrderReview() {
                                                 <div className="flex-1">
                                                     <p className="text-sm font-medium text-blue-900">Prazo de Entrega</p>
                                                     <p className="text-xs text-blue-700 mt-0.5">{days}</p>
-                                                    <p className="text-xs text-blue-600 mt-1">Previsão: até {estimatedDate}</p>
+                                                    <p className="text-xs text-blue-600 mt-1">Previsao: ate {estimatedDate}</p>
                                                 </div>
                                             </div>
                                         </div>

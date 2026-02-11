@@ -1,9 +1,8 @@
 import { useCartStore } from '../store/cartStore'
-import { ArrowRight, Lock } from 'lucide-react'
+import { ArrowRight, Lock, Shield } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import clsx from 'clsx'
-import DiscountUnlockAlert from './DiscountUnlockAlert'
 
 const formatPrice = (price) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -12,20 +11,22 @@ const formatPrice = (price) => {
     }).format(price)
 }
 
+const levelNames = { starter: 'Starter', prata: 'Prata', ouro: 'Ouro' }
+
 export default function CartFooter() {
     const { getSummary, cart } = useCartStore()
-    const { isApproved } = useAuth()
-    const { totalWithDiscount, itemCount, isHighTicket, isCloseToUnlock, remainingToUnlock35 } = getSummary()
+    const { isApproved, user } = useAuth()
+    const { totalWithDiscount, itemCount, meetsMinimum, minimumOrder, remainingToMinimum, discountStandard, isFirstOrder } = getSummary()
     const navigate = useNavigate()
 
-    const MIN_ORDER = 1000
-    const remaining = Math.max(0, MIN_ORDER - totalWithDiscount)
-    const percentComplete = Math.min(100, (totalWithDiscount / MIN_ORDER) * 100)
+    const percentComplete = Math.min(100, (totalWithDiscount / minimumOrder) * 100)
 
     // Permitir checkout se atingiu o valor mínimo E está aprovado
-    const canCheckout = totalWithDiscount >= MIN_ORDER && isApproved
+    const canCheckout = meetsMinimum && isApproved
 
     if (itemCount === 0) return null
+
+    const userLevel = user?.level || 'starter'
 
     return (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-2xl z-40">
@@ -34,17 +35,19 @@ export default function CartFooter() {
                 {!isApproved && (
                     <div className="bg-yellow-100 px-4 py-2 text-center text-xs sm:text-sm border-b border-yellow-200 mb-4 rounded-lg">
                         <span className="text-yellow-800 font-medium">
-                            ⏳ Aguardando aprovação do cadastro para finalizar pedidos
+                            Aguardando aprovacao do cadastro para finalizar pedidos
                         </span>
                     </div>
                 )}
 
                 {/* Minimum Order Progress Bar */}
-                {!canCheckout && isApproved && totalWithDiscount < MIN_ORDER && (
+                {!meetsMinimum && isApproved && (
                     <div className="bg-slate-100 px-4 py-2 text-center text-xs sm:text-sm border-b border-slate-200 mb-4 rounded-lg">
                         <div className="flex items-center justify-between mb-1 max-w-md mx-auto">
-                            <span className="text-slate-600">Pedido Mínimo: {formatPrice(MIN_ORDER)}</span>
-                            <span className="text-red-500 font-medium">Faltam {formatPrice(remaining)}</span>
+                            <span className="text-slate-600">
+                                Pedido Minimo {isFirstOrder ? '(1o pedido)' : ''}: {formatPrice(minimumOrder)}
+                            </span>
+                            <span className="text-red-500 font-medium">Faltam {formatPrice(remainingToMinimum)}</span>
                         </div>
                         <div className="h-2 bg-slate-200 rounded-full overflow-hidden max-w-md mx-auto">
                             <div
@@ -55,9 +58,12 @@ export default function CartFooter() {
                     </div>
                 )}
 
-                {/* Discount Unlock Alert */}
-                {isCloseToUnlock && !isHighTicket && (
-                    <DiscountUnlockAlert remainingAmount={remainingToUnlock35} />
+                {/* Level Discount Info */}
+                {isApproved && (
+                    <div className="flex items-center justify-center gap-2 mb-3 text-xs text-slate-500">
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Nivel {levelNames[userLevel] || 'Starter'} - {(discountStandard * 100).toFixed(0)}% de desconto</span>
+                    </div>
                 )}
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -78,17 +84,6 @@ export default function CartFooter() {
                                 {itemCount} {itemCount === 1 ? 'produto' : 'produtos'}
                             </p>
                         </div>
-
-                        {isHighTicket && (
-                            <>
-                                <div className="h-12 w-px bg-slate-200" />
-                                <div className="bg-green-100 px-3 py-2 rounded-lg">
-                                    <p className="text-xs text-green-700 font-semibold">
-                                        🎉 35% de Desconto Desbloqueado!
-                                    </p>
-                                </div>
-                            </>
-                        )}
                     </div>
 
                     {/* Action Buttons */}

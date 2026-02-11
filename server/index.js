@@ -12,11 +12,47 @@ app.use(cors());
 app.use(express.json());
 
 // =============================================
+// CONSTANTES DE NIVEL
+// =============================================
+
+const LEVEL_CONFIG = {
+    starter: { discount: 0.30, name: 'Starter', minAccumulated: 0 },
+    prata:   { discount: 0.35, name: 'Prata', minAccumulated: 5000 },
+    ouro:    { discount: 0.40, name: 'Ouro', minAccumulated: 10000 }
+};
+
+const AFFILIATE_CONFIG = {
+    influencer_pro: {
+        name: 'Influencer Pro',
+        fee: 0,
+        commissions: { pe_products: 0.12, store: 0.08, courses: 0.20 }
+    },
+    renda_extra: {
+        name: 'Renda Extra',
+        fee: 97,
+        commissions: { pe_products: 0.125, store: 0.20, courses: 0.20 }
+    },
+    gratuito: {
+        name: 'Gratuito',
+        fee: 0,
+        commissions: { pe_products: 0.125, store: 0.20, courses: 0.20 }
+    }
+};
+
+const AFFILIATE_LEVELS = {
+    conhecedor: { name: 'Conhecedor', minSales: 0, bonus: 0 },
+    to_gostando: { name: 'To Gostando', minSales: 10, bonus: 0 },
+    associado: { name: 'Associado', minSales: 30, bonus: 0.025 }
+};
+
+const MIN_ORDER_FIRST = 897;
+const MIN_ORDER_RECURRING = 600;
+const INACTIVITY_DAYS = 90;
+
+// =============================================
 // MIDDLEWARE — JWT + Auto-criar usuario local
 // =============================================
 
-// Valida o JWT (mesmo JWT_SECRET do central-pelg)
-// e auto-cria o usuario no banco revenda_pelg se nao existir
 const authenticateToken = async (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -26,14 +62,12 @@ const authenticateToken = async (req, res, next) => {
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-        // Buscar usuario local pelo central_user_id
         let { rows } = await db.query(
             'SELECT * FROM users WHERE central_user_id = $1',
             [decoded.id]
         );
 
         if (rows.length === 0) {
-            // Auto-criar usuario local a partir dos dados do JWT
             const result = await db.query(
                 `INSERT INTO users (central_user_id, email, name, role)
                  VALUES ($1, $2, $3, $4)
@@ -71,6 +105,185 @@ const requireAdmin = async (req, res, next) => {
         res.sendStatus(500);
     }
 };
+
+// =============================================
+// HELPERS
+// =============================================
+
+// Gera codigo de indicacao unico
+function generateReferralCode(name) {
+    const cleanName = (name || 'USER').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6);
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `PE-${cleanName}${rand}`;
+}
+
+// Recalcula nivel do usuario apos evento
+async function recalculateUserLevel(userId) {
+    const { rows } = await db.query(
+        'SELECT id, level, total_accumulated, quarter_accumulated FROM users WHERE id = $1',
+        [userId]
+    );
+    if (rows.length === 0) return;
+    const user = rows[0];
+
+    // Contar indicacoes ativas
+    const refResult = await db.query(
+        "SELECT COUNT(*) as cnt FROM referrals WHERE referrer_id = $1 AND status = 'active'",
+        [userId]
+    );
+    const activeReferrals = parseInt(refResult.rows[0].cnt);
+
+    let newLevel = 'starter';
+    const accumulated = parseFloat(user.total_accumulated) || 0;
+    const quarterAcc = parseFloat(user.quarter_accumulated) || 0;
+
+    // Ouro: R$10k/trimestre OU 6 indicacoes
+    if (quarterAcc >= 10000 || activeReferrals >= 6) {
+        newLevel = 'ouro';
+    }
+    // Prata: R$5k acumulado OU 3 indicacoes
+    else if (accumulated >= 5000 || activeReferrals >= 3) {
+        newLevel = 'prata';
+    }
+
+    if (newLevel !== user.level) {
+        await db.query(
+            'UPDATE users SET level = $1, level_updated_at = NOW() WHERE id = $2',
+            [newLevel, userId]
+        );
+        await db.query(
+            'INSERT INTO level_history (user_id, old_level, new_level, reason, changed_by) VALUES ($1, $2, $3, $4, $5)',
+            [userId, user.level, newLevel, 'Recalculo automatico', 'system']
+        );
+
+        // Grant level achievements
+        if (newLevel === 'prata') await grantAchievement(userId, 'level_prata');
+        if (newLevel === 'ouro') await grantAchievement(userId, 'level_ouro');
+    }
+
+    return newLevel;
+}
+
+// Checa e concede conquistas
+async function checkAndGrantAchievements(userId) {
+    const { rows: userRows } = await db.query(
+        'SELECT total_accumulated, points FROM users WHERE id = $1',
+        [userId]
+    );
+    if (userRows.length === 0) return;
+    const user = userRows[0];
+
+    // Count orders
+    const orderResult = await db.query(
+        "SELECT COUNT(*) as cnt FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid')",
+        [userId]
+    );
+    const orderCount = parseInt(orderResult.rows[0].cnt);
+
+    // Count referrals
+    const refResult = await db.query(
+        "SELECT COUNT(*) as cnt FROM referrals WHERE referrer_id = $1 AND status = 'active'",
+        [userId]
+    );
+    const refCount = parseInt(refResult.rows[0].cnt);
+
+    const accumulated = parseFloat(user.total_accumulated) || 0;
+
+    // Sales achievements
+    if (orderCount >= 1) await grantAchievement(userId, 'first_sale');
+    if (orderCount >= 5) await grantAchievement(userId, 'sales_5');
+    if (orderCount >= 10) await grantAchievement(userId, 'sales_10');
+    if (orderCount >= 25) await grantAchievement(userId, 'sales_25');
+    if (orderCount >= 50) await grantAchievement(userId, 'sales_50');
+
+    // Revenue achievements
+    if (accumulated >= 5000) await grantAchievement(userId, 'revenue_5k');
+    if (accumulated >= 10000) await grantAchievement(userId, 'revenue_10k');
+    if (accumulated >= 25000) await grantAchievement(userId, 'revenue_25k');
+    if (accumulated >= 50000) await grantAchievement(userId, 'revenue_50k');
+
+    // Referral achievements
+    if (refCount >= 1) await grantAchievement(userId, 'referral_1');
+    if (refCount >= 3) await grantAchievement(userId, 'referral_3');
+    if (refCount >= 5) await grantAchievement(userId, 'referral_5');
+    if (refCount >= 10) await grantAchievement(userId, 'referral_10');
+}
+
+async function grantAchievement(userId, slug) {
+    try {
+        const { rows: achRows } = await db.query('SELECT id, points_reward FROM achievements WHERE slug = $1', [slug]);
+        if (achRows.length === 0) return;
+        const achievement = achRows[0];
+
+        // Check if already earned
+        const { rows: existing } = await db.query(
+            'SELECT id FROM user_achievements WHERE user_id = $1 AND achievement_id = $2',
+            [userId, achievement.id]
+        );
+        if (existing.length > 0) return;
+
+        // Grant
+        await db.query(
+            'INSERT INTO user_achievements (user_id, achievement_id) VALUES ($1, $2)',
+            [userId, achievement.id]
+        );
+
+        // Award points
+        if (achievement.points_reward > 0) {
+            await db.query(
+                'UPDATE users SET points = points + $1 WHERE id = $2',
+                [achievement.points_reward, userId]
+            );
+            await db.query(
+                'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+                [userId, achievement.points_reward, 'achievement', `Conquista: ${slug}`, String(achievement.id)]
+            );
+        }
+    } catch (e) {
+        // Unique constraint violation = already earned, ignore
+    }
+}
+
+// Creditar comissao de indicacao
+async function creditReferralCommission(orderId, buyerUserId, orderTotal) {
+    const { rows } = await db.query('SELECT referred_by FROM users WHERE id = $1', [buyerUserId]);
+    if (rows.length === 0 || !rows[0].referred_by) return;
+
+    const referrerId = rows[0].referred_by;
+
+    // Check if first order of this buyer
+    const orderCountResult = await db.query(
+        "SELECT COUNT(*) as cnt FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid')",
+        [buyerUserId]
+    );
+    const orderCount = parseInt(orderCountResult.rows[0].cnt);
+
+    // 5% first order, 1% recurring
+    const rate = orderCount <= 1 ? 0.05 : 0.01;
+    const amount = orderTotal * rate;
+
+    if (amount <= 0) return;
+
+    // Create commission
+    await db.query(
+        `INSERT INTO commissions (user_id, source_user_id, order_id, type, amount, rate, status, credited_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'credited', NOW())`,
+        [referrerId, buyerUserId, orderId, 'referral', amount, rate]
+    );
+
+    // Credit balance
+    await db.query(
+        'UPDATE users SET commission_balance = commission_balance + $1 WHERE id = $2',
+        [amount, referrerId]
+    );
+
+    // Award points for commission
+    await db.query(
+        'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+        [referrerId, Math.floor(amount), 'commission', `Comissao de indicacao`, String(orderId)]
+    );
+    await db.query('UPDATE users SET points = points + $1 WHERE id = $2', [Math.floor(amount), referrerId]);
+}
 
 // =============================================
 // ROTA DE TESTE
@@ -119,6 +332,105 @@ app.post('/users/sync', authenticateToken, async (req, res) => {
 // USER PROFILE ROUTES
 // =============================================
 
+app.get('/users/me', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, approval_status, rejection_reason, created_at,
+             level, commission_balance, referral_code, has_purchased_kit, first_order_completed, points, total_accumulated,
+             affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count
+             FROM users WHERE id = $1`,
+            [req.user.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar usuario' });
+    }
+});
+
+app.get('/users/me/level', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT level, total_accumulated, quarter_accumulated, last_purchase_date, level_updated_at FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+
+        const user = rows[0];
+        const currentLevel = user.level || 'starter';
+        const config = LEVEL_CONFIG[currentLevel];
+
+        // Calculate progress to next level
+        let nextLevel = null;
+        let progressPercent = 100;
+        let amountToNext = 0;
+
+        if (currentLevel === 'starter') {
+            nextLevel = 'prata';
+            amountToNext = Math.max(0, 5000 - (parseFloat(user.total_accumulated) || 0));
+            progressPercent = Math.min(100, ((parseFloat(user.total_accumulated) || 0) / 5000) * 100);
+        } else if (currentLevel === 'prata') {
+            nextLevel = 'ouro';
+            amountToNext = Math.max(0, 10000 - (parseFloat(user.quarter_accumulated) || 0));
+            progressPercent = Math.min(100, ((parseFloat(user.quarter_accumulated) || 0) / 10000) * 100);
+        }
+
+        // Days until potential downgrade (90 days inactivity)
+        let daysUntilDowngrade = null;
+        if (user.last_purchase_date) {
+            const lastPurchase = new Date(user.last_purchase_date);
+            const deadline = new Date(lastPurchase.getTime() + INACTIVITY_DAYS * 24 * 60 * 60 * 1000);
+            daysUntilDowngrade = Math.max(0, Math.ceil((deadline - new Date()) / (24 * 60 * 60 * 1000)));
+        }
+
+        res.json({
+            level: currentLevel,
+            levelName: config.name,
+            discount: config.discount,
+            totalAccumulated: parseFloat(user.total_accumulated) || 0,
+            quarterAccumulated: parseFloat(user.quarter_accumulated) || 0,
+            nextLevel,
+            nextLevelName: nextLevel ? LEVEL_CONFIG[nextLevel].name : null,
+            amountToNext,
+            progressPercent,
+            daysUntilDowngrade,
+            lastPurchaseDate: user.last_purchase_date
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar nivel' });
+    }
+});
+
+app.get('/users/me/kit-status', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT has_purchased_kit, kit_type, kit_purchased_at, first_order_completed FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar status do kit' });
+    }
+});
+
+app.post('/users/me/request-approval', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            "UPDATE users SET approval_status = 'pending', rejection_reason = NULL, updated_at = NOW() WHERE id = $1 AND approval_status IN ('rejected', 'suspended') RETURNING id, approval_status",
+            [req.user.id]
+        );
+        if (rows.length === 0) return res.status(400).json({ message: 'Nao e possivel solicitar aprovacao' });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao solicitar aprovacao' });
+    }
+});
+
 app.put('/users/me', authenticateToken, async (req, res) => {
     const { name, telefone, foto } = req.body;
 
@@ -148,6 +460,393 @@ app.put('/users/me', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao atualizar perfil' });
+    }
+});
+
+// =============================================
+// KITS ROUTES
+// =============================================
+
+app.get('/kits', async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM kits WHERE active = true ORDER BY price ASC');
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar kits' });
+    }
+});
+
+// =============================================
+// REFERRAL ROUTES (Public)
+// =============================================
+
+app.get('/referral/validate/:code', async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            "SELECT id, name, referral_code FROM users WHERE referral_code = $1 AND approval_status = 'approved'",
+            [req.params.code.toUpperCase()]
+        );
+        if (rows.length === 0) return res.status(404).json({ valid: false, message: 'Codigo invalido' });
+        res.json({ valid: true, referrerName: rows[0].name });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao validar codigo' });
+    }
+});
+
+// =============================================
+// REFERRAL ROUTES (Authenticated)
+// =============================================
+
+app.get('/users/me/referral-code', authenticateToken, async (req, res) => {
+    try {
+        let { rows } = await db.query('SELECT referral_code, name FROM users WHERE id = $1', [req.user.id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+
+        let code = rows[0].referral_code;
+        if (!code) {
+            code = generateReferralCode(rows[0].name);
+            // Ensure uniqueness
+            let attempts = 0;
+            while (attempts < 5) {
+                try {
+                    await db.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
+                    break;
+                } catch (e) {
+                    code = generateReferralCode(rows[0].name);
+                    attempts++;
+                }
+            }
+        }
+
+        res.json({ referralCode: code });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao gerar codigo de indicacao' });
+    }
+});
+
+app.get('/users/me/referrals', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT r.*, u.name as referred_name, u.email as referred_email, u.created_at as referred_since
+             FROM referrals r JOIN users u ON r.referred_id = u.id
+             WHERE r.referrer_id = $1 ORDER BY r.created_at DESC`,
+            [req.user.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar indicacoes' });
+    }
+});
+
+app.get('/users/me/commissions', authenticateToken, async (req, res) => {
+    try {
+        const { rows: commissions } = await db.query(
+            `SELECT c.*, u.name as source_name
+             FROM commissions c LEFT JOIN users u ON c.source_user_id = u.id
+             WHERE c.user_id = $1 ORDER BY c.created_at DESC`,
+            [req.user.id]
+        );
+
+        const { rows: balanceRows } = await db.query(
+            'SELECT commission_balance FROM users WHERE id = $1',
+            [req.user.id]
+        );
+
+        res.json({
+            balance: parseFloat(balanceRows[0]?.commission_balance) || 0,
+            commissions
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar comissoes' });
+    }
+});
+
+app.post('/users/me/commissions/apply', authenticateToken, async (req, res) => {
+    const { amount } = req.body;
+
+    try {
+        const { rows } = await db.query('SELECT commission_balance FROM users WHERE id = $1', [req.user.id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+
+        const balance = parseFloat(rows[0].commission_balance) || 0;
+        if (amount > balance) {
+            return res.status(400).json({ message: 'Saldo insuficiente' });
+        }
+
+        await db.query(
+            'UPDATE users SET commission_balance = commission_balance - $1 WHERE id = $2',
+            [amount, req.user.id]
+        );
+
+        res.json({ applied: amount, newBalance: balance - amount });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao aplicar credito' });
+    }
+});
+
+// =============================================
+// ACHIEVEMENTS & POINTS ROUTES
+// =============================================
+
+app.get('/users/me/achievements', authenticateToken, async (req, res) => {
+    try {
+        const { rows: all } = await db.query('SELECT * FROM achievements ORDER BY category, threshold_value');
+        const { rows: earned } = await db.query(
+            'SELECT achievement_id, earned_at FROM user_achievements WHERE user_id = $1',
+            [req.user.id]
+        );
+        const earnedMap = {};
+        earned.forEach(e => { earnedMap[e.achievement_id] = e.earned_at; });
+
+        const achievements = all.map(a => ({
+            ...a,
+            earned: !!earnedMap[a.id],
+            earned_at: earnedMap[a.id] || null
+        }));
+
+        res.json(achievements);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar conquistas' });
+    }
+});
+
+app.get('/users/me/points', authenticateToken, async (req, res) => {
+    try {
+        const { rows: userRows } = await db.query('SELECT points FROM users WHERE id = $1', [req.user.id]);
+        const { rows: ledger } = await db.query(
+            'SELECT * FROM points_ledger WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+            [req.user.id]
+        );
+        res.json({
+            total: userRows[0]?.points || 0,
+            history: ledger
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar pontos' });
+    }
+});
+
+// =============================================
+// RANKINGS ROUTES
+// =============================================
+
+app.get('/rankings/top-sellers', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(`
+            SELECT u.id, u.name, u.level, COUNT(o.id) as order_count, SUM(o.total) as total_sales
+            FROM users u
+            JOIN orders o ON o.user_id = u.id AND o.status IN ('completed','processing','paid')
+            AND o.created_at >= date_trunc('month', CURRENT_DATE)
+            GROUP BY u.id, u.name, u.level
+            ORDER BY total_sales DESC
+            LIMIT 20
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar ranking' });
+    }
+});
+
+app.get('/rankings/top-referrers', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(`
+            SELECT u.id, u.name, u.level, COUNT(r.id) as referral_count
+            FROM users u
+            JOIN referrals r ON r.referrer_id = u.id AND r.status = 'active'
+            AND r.activated_at >= date_trunc('quarter', CURRENT_DATE)
+            GROUP BY u.id, u.name, u.level
+            ORDER BY referral_count DESC
+            LIMIT 20
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar ranking' });
+    }
+});
+
+app.get('/rankings/top-engagement', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(`
+            SELECT u.id, u.name, u.level, u.points
+            FROM users u
+            WHERE u.points > 0
+            ORDER BY u.points DESC
+            LIMIT 20
+        `);
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar ranking' });
+    }
+});
+
+// =============================================
+// RESELLER DASHBOARD ROUTES
+// =============================================
+
+app.get('/users/me/dashboard', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const [userResult, ordersResult, monthResult, commissionsResult, referralsResult, achievementsResult] = await Promise.all([
+            db.query('SELECT level, points, commission_balance, total_accumulated, referral_code FROM users WHERE id = $1', [userId]),
+            db.query("SELECT COUNT(*) as cnt, COALESCE(SUM(total),0) as total FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid')", [userId]),
+            db.query("SELECT COUNT(*) as cnt, COALESCE(SUM(total),0) as total FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid') AND created_at >= date_trunc('month', CURRENT_DATE)", [userId]),
+            db.query("SELECT COALESCE(SUM(amount),0) as total FROM commissions WHERE user_id = $1 AND status = 'credited'", [userId]),
+            db.query("SELECT COUNT(*) as cnt FROM referrals WHERE referrer_id = $1 AND status = 'active'", [userId]),
+            db.query('SELECT COUNT(*) as cnt FROM user_achievements WHERE user_id = $1', [userId])
+        ]);
+
+        const user = userResult.rows[0];
+        res.json({
+            level: user.level,
+            levelDiscount: LEVEL_CONFIG[user.level || 'starter'].discount,
+            points: user.points,
+            commissionBalance: parseFloat(user.commission_balance) || 0,
+            totalAccumulated: parseFloat(user.total_accumulated) || 0,
+            referralCode: user.referral_code,
+            totalOrders: parseInt(ordersResult.rows[0].cnt),
+            totalSales: parseFloat(ordersResult.rows[0].total),
+            monthOrders: parseInt(monthResult.rows[0].cnt),
+            monthSales: parseFloat(monthResult.rows[0].total),
+            totalCommissions: parseFloat(commissionsResult.rows[0].total),
+            activeReferrals: parseInt(referralsResult.rows[0].cnt),
+            achievementsEarned: parseInt(achievementsResult.rows[0].cnt)
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar dashboard' });
+    }
+});
+
+app.get('/users/me/sales-history', authenticateToken, async (req, res) => {
+    try {
+        const { page = 1, limit = 10 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+        const { rows } = await db.query(
+            "SELECT id, order_number, total, status, created_at FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid') ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            [req.user.id, Number(limit), offset]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar historico' });
+    }
+});
+
+app.get('/users/me/commission-history', authenticateToken, async (req, res) => {
+    try {
+        const { page = 1, limit = 10 } = req.query;
+        const offset = (Number(page) - 1) * Number(limit);
+        const { rows } = await db.query(
+            `SELECT c.*, u.name as source_name FROM commissions c LEFT JOIN users u ON c.source_user_id = u.id
+             WHERE c.user_id = $1 ORDER BY c.created_at DESC LIMIT $2 OFFSET $3`,
+            [req.user.id, Number(limit), offset]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar historico de comissoes' });
+    }
+});
+
+// =============================================
+// AFFILIATE ROUTES
+// =============================================
+
+app.post('/affiliate/register', authenticateToken, async (req, res) => {
+    const { type } = req.body; // influencer_pro, renda_extra, gratuito
+
+    if (!AFFILIATE_CONFIG[type]) {
+        return res.status(400).json({ message: 'Tipo de afiliado invalido' });
+    }
+
+    try {
+        const { rows } = await db.query('SELECT affiliate_status FROM users WHERE id = $1', [req.user.id]);
+        if (rows[0]?.affiliate_status === 'active') {
+            return res.status(400).json({ message: 'Voce ja e um afiliado ativo' });
+        }
+
+        await db.query(
+            `UPDATE users SET affiliate_type = $1, affiliate_status = 'active', affiliate_level = 'conhecedor', affiliate_sales_count = 0, updated_at = NOW() WHERE id = $2`,
+            [type, req.user.id]
+        );
+
+        // Generate referral code if doesn't exist
+        const codeResult = await db.query('SELECT referral_code, name FROM users WHERE id = $1', [req.user.id]);
+        if (!codeResult.rows[0].referral_code) {
+            const code = generateReferralCode(codeResult.rows[0].name);
+            await db.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
+        }
+
+        res.json({ message: 'Afiliado registrado com sucesso', type });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao registrar afiliado' });
+    }
+});
+
+app.get('/affiliate/me', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, referral_code, commission_balance FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (rows.length === 0 || !rows[0].affiliate_type) {
+            return res.status(404).json({ message: 'Nao e afiliado' });
+        }
+
+        const user = rows[0];
+        const config = AFFILIATE_CONFIG[user.affiliate_type] || {};
+        const levelConfig = AFFILIATE_LEVELS[user.affiliate_level] || AFFILIATE_LEVELS.conhecedor;
+
+        res.json({
+            ...user,
+            typeName: config.name,
+            commissions: config.commissions,
+            levelName: levelConfig.name,
+            bonus: levelConfig.bonus,
+            nextLevel: user.affiliate_level === 'conhecedor' ? 'to_gostando' : user.affiliate_level === 'to_gostando' ? 'associado' : null
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar perfil afiliado' });
+    }
+});
+
+app.get('/affiliate/dashboard', authenticateToken, async (req, res) => {
+    try {
+        const { rows: userRows } = await db.query(
+            'SELECT affiliate_type, affiliate_level, affiliate_sales_count, commission_balance, referral_code FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (!userRows[0]?.affiliate_type) return res.status(404).json({ message: 'Nao e afiliado' });
+
+        const [commissionsResult, referralsResult, monthResult] = await Promise.all([
+            db.query("SELECT COALESCE(SUM(amount),0) as total FROM commissions WHERE user_id = $1 AND type = 'affiliate'", [req.user.id]),
+            db.query("SELECT COUNT(*) as cnt FROM referrals WHERE referrer_id = $1 AND status = 'active'", [req.user.id]),
+            db.query("SELECT COALESCE(SUM(amount),0) as total FROM commissions WHERE user_id = $1 AND type = 'affiliate' AND created_at >= date_trunc('month', CURRENT_DATE)", [req.user.id])
+        ]);
+
+        res.json({
+            ...userRows[0],
+            totalCommissions: parseFloat(commissionsResult.rows[0].total),
+            monthCommissions: parseFloat(monthResult.rows[0].total),
+            activeReferrals: parseInt(referralsResult.rows[0].cnt)
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar dashboard afiliado' });
     }
 });
 
@@ -267,13 +966,67 @@ app.get('/orders/:id', authenticateToken, async (req, res) => {
 });
 
 app.post('/orders', authenticateToken, async (req, res) => {
-    const { order_number, details, payment_method, installments, total, address_id } = req.body;
+    const { order_number, details, payment_method, installments, total, address_id, kit_id, commission_credit } = req.body;
 
     try {
+        // Buscar status do usuario
+        const { rows: userRows } = await db.query(
+            'SELECT first_order_completed, has_purchased_kit, commission_balance FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        const userStatus = userRows[0];
+        const isFirstOrder = !userStatus.first_order_completed;
+
+        // Validar kit obrigatorio para primeiro pedido
+        if (isFirstOrder && !kit_id) {
+            return res.status(400).json({ message: 'Kit obrigatorio para o primeiro pedido' });
+        }
+        if (!isFirstOrder && kit_id) {
+            return res.status(400).json({ message: 'Kit disponivel apenas no primeiro pedido' });
+        }
+
+        // Validar pedido minimo (total de produtos, sem kit)
+        const productTotal = parseFloat(total) || 0;
+        const minOrder = isFirstOrder ? MIN_ORDER_FIRST : MIN_ORDER_RECURRING;
+        if (productTotal < minOrder) {
+            return res.status(400).json({ message: `Pedido minimo de R$${minOrder} em produtos` });
+        }
+
+        // Buscar kit se necessario
+        let kitData = null;
+        let finalTotal = productTotal;
+        if (kit_id) {
+            const { rows: kitRows } = await db.query('SELECT * FROM kits WHERE id = $1 AND active = true', [kit_id]);
+            if (kitRows.length === 0) return res.status(400).json({ message: 'Kit nao encontrado' });
+            kitData = kitRows[0];
+            finalTotal += parseFloat(kitData.price);
+        }
+
+        // Aplicar credito de comissao
+        let creditApplied = 0;
+        if (commission_credit && commission_credit > 0) {
+            const balance = parseFloat(userStatus.commission_balance) || 0;
+            creditApplied = Math.min(commission_credit, balance, finalTotal);
+            if (creditApplied > 0) {
+                finalTotal -= creditApplied;
+                await db.query(
+                    'UPDATE users SET commission_balance = commission_balance - $1 WHERE id = $2',
+                    [creditApplied, req.user.id]
+                );
+            }
+        }
+
+        // Gravar pedido com kit e credito nos details
+        const enrichedDetails = {
+            ...details,
+            kit: kitData ? { id: kitData.id, name: kitData.name, slug: kitData.slug, price: kitData.price } : null,
+            commission_credit_applied: creditApplied
+        };
+
         const { rows } = await db.query(
             `INSERT INTO orders (user_id, order_number, details, payment_method, installments, total, address_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [req.user.id, order_number, JSON.stringify(details), payment_method, installments || 1, total, address_id]
+            [req.user.id, order_number, JSON.stringify(enrichedDetails), payment_method, installments || 1, finalTotal, address_id]
         );
 
         res.status(201).json(rows[0]);
@@ -315,6 +1068,52 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
         );
 
         if (rows.length === 0) return res.status(404).json({ message: 'Pedido nao encontrado' });
+
+        // Se status mudou para paid/completed, processar logica pos-pagamento
+        if (status && ['paid', 'completed', 'processing'].includes(status)) {
+            const order = rows[0];
+            const orderTotal = parseFloat(order.total) || 0;
+
+            // Atualizar totais do usuario
+            await db.query(
+                `UPDATE users SET
+                    last_purchase_date = NOW(),
+                    total_accumulated = total_accumulated + $1,
+                    quarter_accumulated = quarter_accumulated + $1,
+                    first_order_completed = true,
+                    has_purchased_kit = CASE WHEN has_purchased_kit = false AND (details->>'kit') IS NOT NULL THEN true ELSE has_purchased_kit END,
+                    kit_type = CASE WHEN has_purchased_kit = false AND (details->'kit'->>'slug') IS NOT NULL THEN details->'kit'->>'slug' ELSE kit_type END,
+                    kit_purchased_at = CASE WHEN has_purchased_kit = false AND (details->>'kit') IS NOT NULL THEN NOW() ELSE kit_purchased_at END
+                 WHERE id = $2`,
+                [orderTotal, order.user_id]
+            );
+
+            // Creditar comissao de indicacao
+            await creditReferralCommission(order.id, order.user_id, orderTotal);
+
+            // Ativar indicacao se for primeiro pedido
+            await db.query(
+                "UPDATE referrals SET status = 'active', activated_at = NOW() WHERE referred_id = $1 AND status = 'pending'",
+                [order.user_id]
+            );
+
+            // Recalcular nivel
+            await recalculateUserLevel(order.user_id);
+
+            // Checar conquistas
+            await checkAndGrantAchievements(order.user_id);
+
+            // Award points for purchase
+            const purchasePoints = Math.floor(orderTotal / 10); // 1 ponto a cada R$10
+            if (purchasePoints > 0) {
+                await db.query('UPDATE users SET points = points + $1 WHERE id = $2', [purchasePoints, order.user_id]);
+                await db.query(
+                    'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+                    [order.user_id, purchasePoints, 'purchase', 'Pontos por compra', String(order.id)]
+                );
+            }
+        }
+
         res.json(rows[0]);
     } catch (err) {
         console.error(err);
@@ -478,23 +1277,99 @@ app.get('/app-settings', async (req, res) => {
 });
 
 // =============================================
+// CRON ROUTES (Protegidos por secret)
+// =============================================
+
+app.post('/cron/check-levels', async (req, res) => {
+    const secret = req.headers['x-cron-secret'];
+    if (secret !== process.env.CRON_SECRET) return res.sendStatus(403);
+
+    try {
+        // Downgrade por inatividade (90 dias sem compra)
+        const { rows: inactiveUsers } = await db.query(`
+            SELECT id, level, last_purchase_date FROM users
+            WHERE level != 'starter'
+            AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+        `);
+
+        for (const user of inactiveUsers) {
+            let newLevel;
+            if (user.level === 'ouro') newLevel = 'prata';
+            else if (user.level === 'prata') newLevel = 'starter';
+            else continue;
+
+            await db.query('UPDATE users SET level = $1, level_updated_at = NOW() WHERE id = $2', [newLevel, user.id]);
+            await db.query(
+                'INSERT INTO level_history (user_id, old_level, new_level, reason, changed_by) VALUES ($1, $2, $3, $4, $5)',
+                [user.id, user.level, newLevel, `Inatividade: ${INACTIVITY_DAYS} dias sem compra`, 'cron']
+            );
+        }
+
+        // Suspender starters inativos
+        await db.query(`
+            UPDATE users SET approval_status = 'suspended'
+            WHERE level = 'starter' AND approval_status = 'approved'
+            AND last_purchase_date IS NOT NULL
+            AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+        `);
+
+        // Check for upgrades
+        const { rows: allUsers } = await db.query("SELECT id FROM users WHERE approval_status = 'approved'");
+        for (const u of allUsers) {
+            await recalculateUserLevel(u.id);
+        }
+
+        res.json({ processed: inactiveUsers.length, totalChecked: allUsers.length });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro no cron de niveis' });
+    }
+});
+
+app.post('/cron/check-referral-activity', async (req, res) => {
+    const secret = req.headers['x-cron-secret'];
+    if (secret !== process.env.CRON_SECRET) return res.sendStatus(403);
+
+    try {
+        // Inativar indicacoes cujo indicado nao comprou em 90 dias
+        const { rowCount } = await db.query(`
+            UPDATE referrals SET status = 'inactive'
+            WHERE status = 'active'
+            AND referred_id IN (
+                SELECT id FROM users WHERE last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+            )
+        `);
+
+        res.json({ inactivated: rowCount });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro no cron de indicacoes' });
+    }
+});
+
+// =============================================
 // ADMIN ROUTES
 // =============================================
 
 app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const [usersCount, ordersCount, pendingApprovals, recentOrders] = await Promise.all([
+        const [usersCount, ordersCount, pendingApprovals, recentOrders, levelStats] = await Promise.all([
             db.query('SELECT COUNT(*) as total FROM users'),
             db.query('SELECT COUNT(*) as total FROM orders'),
             db.query("SELECT COUNT(*) as total FROM users WHERE approval_status = 'pending'"),
-            db.query('SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 10')
+            db.query('SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 10'),
+            db.query("SELECT level, COUNT(*) as cnt FROM users WHERE approval_status = 'approved' GROUP BY level")
         ]);
+
+        const levelDistribution = {};
+        levelStats.rows.forEach(r => { levelDistribution[r.level || 'starter'] = parseInt(r.cnt); });
 
         res.json({
             totalUsers: parseInt(usersCount.rows[0].total),
             totalOrders: parseInt(ordersCount.rows[0].total),
             pendingApprovals: parseInt(pendingApprovals.rows[0].total),
-            recentOrders: recentOrders.rows
+            recentOrders: recentOrders.rows,
+            levelDistribution
         });
     } catch (err) {
         console.error(err);
@@ -504,9 +1379,28 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
 
 app.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query(
-            'SELECT id, name, email, role, telefone, document_type, cpf, cnpj, company_name, profession, approval_status, approved_by, approved_at, rejection_reason, created_at FROM users ORDER BY created_at DESC'
-        );
+        const { filter, level } = req.query;
+        let query = 'SELECT id, name, email, role, telefone, document_type, cpf, cnpj, company_name, profession, approval_status, approved_by, approved_at, rejection_reason, created_at, level, total_accumulated, last_purchase_date, commission_balance, has_purchased_kit, first_order_completed, points, affiliate_type, affiliate_status FROM users';
+        const params = [];
+        const conditions = [];
+
+        if (filter && filter !== 'all') {
+            params.push(filter);
+            conditions.push(`approval_status = $${params.length}`);
+        }
+
+        if (level && level !== 'all') {
+            params.push(level);
+            conditions.push(`level = $${params.length}`);
+        }
+
+        if (conditions.length > 0) {
+            query += ' WHERE ' + conditions.join(' AND ');
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        const { rows } = await db.query(query, params);
         res.json(rows);
     } catch (err) {
         console.error(err);
@@ -517,7 +1411,7 @@ app.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
 app.get('/admin/users/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { rows } = await db.query(
-            'SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, profession_other, approval_status, approved_by, approved_at, rejection_reason, created_at FROM users WHERE id = $1',
+            'SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, profession_other, approval_status, approved_by, approved_at, rejection_reason, created_at, level, total_accumulated, last_purchase_date, commission_balance, has_purchased_kit, first_order_completed, points, referral_code, referred_by, affiliate_type, affiliate_status, affiliate_level FROM users WHERE id = $1',
             [req.params.id]
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
@@ -591,6 +1485,82 @@ app.put('/admin/users/:id/role', authenticateToken, requireAdmin, async (req, re
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao alterar role' });
+    }
+});
+
+// Admin: Override de nivel
+app.put('/admin/users/:id/level', authenticateToken, requireAdmin, async (req, res) => {
+    const { level } = req.body;
+    if (!LEVEL_CONFIG[level]) {
+        return res.status(400).json({ message: 'Nivel invalido' });
+    }
+
+    try {
+        const { rows: currentRows } = await db.query('SELECT level FROM users WHERE id = $1', [req.params.id]);
+        if (currentRows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+        const oldLevel = currentRows[0].level;
+
+        await db.query(
+            'UPDATE users SET level = $1, level_updated_at = NOW(), updated_at = NOW() WHERE id = $2',
+            [level, req.params.id]
+        );
+
+        const approver = await db.query('SELECT email FROM users WHERE id = $1', [req.user.id]);
+        await db.query(
+            'INSERT INTO level_history (user_id, old_level, new_level, reason, changed_by) VALUES ($1, $2, $3, $4, $5)',
+            [req.params.id, oldLevel, level, 'Override manual pelo admin', approver.rows[0]?.email || 'admin']
+        );
+
+        // Grant level achievements
+        if (level === 'prata') await grantAchievement(parseInt(req.params.id), 'level_prata');
+        if (level === 'ouro') await grantAchievement(parseInt(req.params.id), 'level_ouro');
+
+        res.json({ message: 'Nivel atualizado', oldLevel, newLevel: level });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao alterar nivel' });
+    }
+});
+
+// Admin: Historico de nivel
+app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT * FROM level_history WHERE user_id = $1 ORDER BY created_at DESC',
+            [req.params.userId]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar historico de nivel' });
+    }
+});
+
+// Admin: Gestao de afiliados
+app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT id, name, email, affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, commission_balance, referral_code, created_at
+             FROM users WHERE affiliate_type IS NOT NULL ORDER BY created_at DESC`
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao listar afiliados' });
+    }
+});
+
+app.put('/admin/affiliates/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+    const { status } = req.body;
+    try {
+        await db.query(
+            'UPDATE users SET affiliate_status = $1, updated_at = NOW() WHERE id = $2',
+            [status, req.params.id]
+        );
+        res.json({ message: 'Status atualizado' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao atualizar afiliado' });
     }
 });
 
@@ -865,7 +1835,6 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
         const { orderId } = req.body;
         if (!orderId) return res.status(400).json({ error: 'orderId obrigatorio' });
 
-        // Buscar pedido local
         const { rows } = await db.query(
             `SELECT o.*, a.street, a.number, a.complement, a.neighborhood, a.city, a.state, a.cep
              FROM orders o LEFT JOIN addresses a ON o.address_id = a.id
@@ -877,7 +1846,6 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
         const order = rows[0];
         const details = order.details || {};
 
-        // Mapear produtos
         const lineItems = (details.items || [])
             .filter(item => item.woo_product_id)
             .map(item => ({
@@ -890,7 +1858,6 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
             return res.status(400).json({ error: 'Nenhum produto mapeado para WooCommerce' });
         }
 
-        // Criar pedido no WooCommerce
         const wcOrderData = {
             status: 'pending',
             billing: {
@@ -930,7 +1897,6 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
 
         const wcOrder = await woocommerceService.createOrder(wcOrderData);
 
-        // Salvar IDs do WooCommerce no pedido local
         await db.query(
             `UPDATE orders SET woocommerce_order_id = $1, woocommerce_order_number = $2,
              tracking_url = $3, updated_at = NOW() WHERE id = $4`,

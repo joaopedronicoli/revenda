@@ -86,7 +86,8 @@ export default function AdminDashboard() {
         orders: { pending: 0, paid: 0, shipped: 0, delivered: 0, total: 0 },
         users: { total: 0, pending: 0, approved: 0, newThisMonth: 0 },
         abandonedCarts: { count: 0, value: 0 },
-        crm: { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 }
+        crm: { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 },
+        levelDistribution: { starter: 0, prata: 0, ouro: 0 }
     })
     const [recentOrders, setRecentOrders] = useState([])
     const [salesChart, setSalesChart] = useState([])
@@ -114,6 +115,7 @@ export default function AdminDashboard() {
                 users = { total: 0, pending: 0, approved: 0, newThisMonth: 0 },
                 abandonedCarts = { count: 0, value: 0 },
                 crm = { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 },
+                levelDistribution = { starter: 0, prata: 0, ouro: 0 },
                 recentOrders: recent = [],
                 salesChart: chart = [],
                 topCustomers: topCust = []
@@ -124,7 +126,8 @@ export default function AdminDashboard() {
                 orders,
                 users,
                 abandonedCarts,
-                crm
+                crm,
+                levelDistribution
             })
 
             setRecentOrders(recent)
@@ -418,20 +421,39 @@ export default function AdminDashboard() {
                 </div>
             </div>
 
+            {/* Level Distribution */}
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Distribuicao por Nivel</h3>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-slate-50 rounded-lg">
+                        <p className="text-3xl font-bold text-slate-700">{metrics.levelDistribution.starter || 0}</p>
+                        <p className="text-sm text-slate-500 mt-1">Starter (30%)</p>
+                    </div>
+                    <div className="text-center p-4 bg-slate-100 rounded-lg">
+                        <p className="text-3xl font-bold text-slate-800">{metrics.levelDistribution.prata || 0}</p>
+                        <p className="text-sm text-slate-500 mt-1">Prata (35%)</p>
+                    </div>
+                    <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                        <p className="text-3xl font-bold text-yellow-800">{metrics.levelDistribution.ouro || 0}</p>
+                        <p className="text-sm text-slate-500 mt-1">Ouro (40%)</p>
+                    </div>
+                </div>
+            </div>
+
             {/* Alerts */}
             {metrics.users.pending > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center gap-3">
                     <AlertCircle className="w-5 h-5 text-yellow-600" />
                     <div className="flex-1">
                         <p className="text-sm font-medium text-yellow-800">
-                            {metrics.users.pending} usuário(s) aguardando aprovação
+                            {metrics.users.pending} usuario(s) aguardando aprovacao
                         </p>
                     </div>
                     <Link
                         to="/admin/users"
                         className="text-sm font-medium text-yellow-700 hover:text-yellow-900"
                     >
-                        Ver usuários →
+                        Ver usuarios →
                     </Link>
                 </div>
             )}

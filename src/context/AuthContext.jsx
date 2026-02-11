@@ -36,6 +36,8 @@ export const AuthProvider = ({ children }) => {
     }, [])
 
     const login = async (email, password) => {
+        let token = null
+
         // 1. Tentar login via WordPress (patriciaelias.com.br)
         try {
             const wpResponse = await fetch('https://patriciaelias.com.br/wp-json/jwt-auth/v1/token', {
@@ -54,22 +56,28 @@ export const AuthProvider = ({ children }) => {
                     wpToken: wpData.token
                 })
 
-                const { token, user: userData } = response.data
-                salvarCriptografado(AUTH_KEY, { token, user: userData })
-                setUser(userData)
-                return { user: userData }
+                token = response.data.token
             }
         } catch (wpErr) {
             console.warn('WordPress login falhou, tentando login local:', wpErr.message)
         }
 
         // 3. Fallback: login local no central-pelg
-        const response = await centralApi.post('/auth/login', { email, password })
-        const { token, user: userData } = response.data
+        if (!token) {
+            const response = await centralApi.post('/auth/login', { email, password })
+            token = response.data.token
+        }
 
-        salvarCriptografado(AUTH_KEY, { token, user: userData })
-        setUser(userData)
-        return { user: userData }
+        // 4. Salvar token e buscar dados completos do usuario via /auth/me
+        salvarCriptografado(AUTH_KEY, { token, user: {} })
+        const meResponse = await centralApi.get('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        const fullUser = meResponse.data
+
+        salvarCriptografado(AUTH_KEY, { token, user: fullUser })
+        setUser(fullUser)
+        return { user: fullUser }
     }
 
     const register = async (email, password, metadata) => {
@@ -90,20 +98,32 @@ export const AuthProvider = ({ children }) => {
             address: cep ? { cep, street, number, complement, neighborhood, city, state } : null
         })
 
-        const { token, user: userData } = response.data
+        const { token } = response.data
 
-        salvarCriptografado(AUTH_KEY, { token, user: userData })
-        setUser(userData)
-        return { user: userData }
+        salvarCriptografado(AUTH_KEY, { token, user: {} })
+        const meResponse = await centralApi.get('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        const fullUser = meResponse.data
+
+        salvarCriptografado(AUTH_KEY, { token, user: fullUser })
+        setUser(fullUser)
+        return { user: fullUser }
     }
 
     const loginWithGoogle = async (accessToken) => {
         const response = await centralApi.post('/revenda/auth/google', { accessToken })
-        const { token, user: userData } = response.data
+        const { token } = response.data
 
-        salvarCriptografado(AUTH_KEY, { token, user: userData })
-        setUser(userData)
-        return { user: userData }
+        salvarCriptografado(AUTH_KEY, { token, user: {} })
+        const meResponse = await centralApi.get('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        const fullUser = meResponse.data
+
+        salvarCriptografado(AUTH_KEY, { token, user: fullUser })
+        setUser(fullUser)
+        return { user: fullUser }
     }
 
     const requestOTP = async (email, sendVia = 'whatsapp') => {
@@ -113,11 +133,17 @@ export const AuthProvider = ({ children }) => {
 
     const verifyOTP = async (email, otp) => {
         const response = await centralApi.post('/auth/verify-otp', { email, otp })
-        const { token, user: userData } = response.data
+        const { token } = response.data
 
-        salvarCriptografado(AUTH_KEY, { token, user: userData })
-        setUser(userData)
-        return { user: userData }
+        salvarCriptografado(AUTH_KEY, { token, user: {} })
+        const meResponse = await centralApi.get('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` }
+        })
+        const fullUser = meResponse.data
+
+        salvarCriptografado(AUTH_KEY, { token, user: fullUser })
+        setUser(fullUser)
+        return { user: fullUser }
     }
 
     const forgotPassword = async (email, sendVia = 'whatsapp') => {
@@ -150,9 +176,9 @@ export const AuthProvider = ({ children }) => {
     // Computed properties
     const userRole = user?.role || 'client'
     const approvalStatus = user?.approval_status || 'approved'
-    const isAdmin = useMemo(() => userRole === 'administrator', [userRole])
+    const isAdmin = useMemo(() => ['administrator', 'admin'].includes(userRole), [userRole])
     const isManager = useMemo(() => userRole === 'manager', [userRole])
-    const canAccessAdmin = useMemo(() => ['administrator', 'manager'].includes(userRole), [userRole])
+    const canAccessAdmin = useMemo(() => ['administrator', 'admin', 'manager'].includes(userRole), [userRole])
     const isApproved = useMemo(() => approvalStatus === 'approved', [approvalStatus])
 
     // Aliases for backward compatibility

@@ -62,7 +62,7 @@ const requireAdmin = async (req, res, next) => {
     try {
         const { rows } = await db.query('SELECT role FROM users WHERE id = $1', [req.user.id]);
         if (rows.length === 0) return res.sendStatus(404);
-        if (!['administrator', 'manager'].includes(rows[0].role)) {
+        if (!['administrator', 'admin', 'manager'].includes(rows[0].role)) {
             return res.status(403).json({ message: 'Acesso restrito a administradores' });
         }
         req.userRole = rows[0].role;

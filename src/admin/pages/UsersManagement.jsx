@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, Search, Shield, CheckCircle, Clock, XCircle, ShieldOff, Mail, Phone, TrendingUp } from 'lucide-react'
+import { Users, Search, Shield, CheckCircle, Clock, XCircle, ShieldOff, Mail, Phone, TrendingUp, UserPlus } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 
@@ -36,6 +36,10 @@ export default function UsersManagement() {
     const [levelHistory, setLevelHistory] = useState([])
     const [showLevelHistory, setShowLevelHistory] = useState(false)
     const [pendingLevel, setPendingLevel] = useState(null)
+    const [showAddUser, setShowAddUser] = useState(false)
+    const [newUser, setNewUser] = useState({ name: '', email: '', telefone: '', role: 'client', approval_status: 'approved' })
+    const [creating, setCreating] = useState(false)
+    const [createError, setCreateError] = useState('')
 
     useEffect(() => {
         loadUsers()
@@ -131,6 +135,25 @@ export default function UsersManagement() {
         }
     }
 
+    const createUser = async () => {
+        if (!newUser.name.trim() || !newUser.email.trim()) {
+            setCreateError('Nome e email sao obrigatorios')
+            return
+        }
+        setCreating(true)
+        setCreateError('')
+        try {
+            const { data } = await api.post('/admin/users', newUser)
+            setUsers(prev => [data, ...prev])
+            setShowAddUser(false)
+            setNewUser({ name: '', email: '', telefone: '', role: 'client', approval_status: 'approved' })
+        } catch (err) {
+            setCreateError(err.response?.data?.message || 'Erro ao criar usuario')
+        } finally {
+            setCreating(false)
+        }
+    }
+
     const filteredUsers = users.filter(user => {
         if (!search) return true
         const searchLower = search.toLowerCase()
@@ -164,6 +187,15 @@ export default function UsersManagement() {
                     <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
                     <p className="text-slate-500">Gerencie os usuarios e aprovacoes</p>
                 </div>
+                {isAdmin && (
+                    <button
+                        onClick={() => { setShowAddUser(true); setCreateError(''); }}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                        <UserPlus className="w-4 h-4" />
+                        Adicionar Usuario
+                    </button>
+                )}
             </div>
 
             {/* Filters */}
@@ -513,6 +545,101 @@ export default function UsersManagement() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* Add User Modal */}
+            {showAddUser && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl max-w-md w-full">
+                        <div className="p-6 border-b border-slate-200">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold text-slate-900">Adicionar Usuario</h2>
+                                <button
+                                    onClick={() => setShowAddUser(false)}
+                                    className="text-slate-400 hover:text-slate-600"
+                                >
+                                    X
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
+                                <input
+                                    type="text"
+                                    value={newUser.name}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    placeholder="Nome completo"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+                                <input
+                                    type="email"
+                                    value={newUser.email}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, email: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    placeholder="email@exemplo.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
+                                <input
+                                    type="text"
+                                    value={newUser.telefone}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, telefone: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                    placeholder="(00) 00000-0000"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                                <select
+                                    value={newUser.role}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, role: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                >
+                                    <option value="client">Cliente</option>
+                                    <option value="manager">Gerente</option>
+                                    <option value="administrator">Administrador</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Status de Aprovacao</label>
+                                <select
+                                    value={newUser.approval_status}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, approval_status: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                >
+                                    <option value="approved">Aprovado</option>
+                                    <option value="pending">Pendente</option>
+                                </select>
+                            </div>
+
+                            {createError && (
+                                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700">
+                                    {createError}
+                                </div>
+                            )}
+
+                            <div className="flex gap-2 pt-2">
+                                <button
+                                    onClick={createUser}
+                                    disabled={creating}
+                                    className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 font-medium"
+                                >
+                                    {creating ? 'Criando...' : 'Criar Usuario'}
+                                </button>
+                                <button
+                                    onClick={() => setShowAddUser(false)}
+                                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

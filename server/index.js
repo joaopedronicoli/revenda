@@ -1567,6 +1567,46 @@ app.get('/admin/users/:id', authenticateToken, requireAdmin, async (req, res) =>
     }
 });
 
+// Admin: Create user manually
+app.post('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
+    const { name, email, telefone, role, approval_status, affiliate_type } = req.body;
+
+    if (!name || !email) {
+        return res.status(400).json({ message: 'Nome e email sao obrigatorios' });
+    }
+
+    try {
+        // Check if email already exists
+        const { rows: existing } = await db.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existing.length > 0) {
+            return res.status(400).json({ message: 'Email ja cadastrado' });
+        }
+
+        // Generate a unique central_user_id for admin-created users
+        const centralId = Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 10000);
+
+        let query = `INSERT INTO users (central_user_id, name, email, telefone, role, approval_status`;
+        let values = [centralId, name, email, telefone || null, role || 'client', approval_status || 'approved'];
+        let placeholders = '$1, $2, $3, $4, $5, $6';
+        let paramCount = 6;
+
+        if (affiliate_type) {
+            paramCount++;
+            query += `, affiliate_type, affiliate_status`;
+            placeholders += `, $${paramCount}, 'active'`;
+            values.push(affiliate_type);
+        }
+
+        query += `) VALUES (${placeholders}) RETURNING *`;
+
+        const { rows } = await db.query(query, values);
+        res.status(201).json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao criar usuario' });
+    }
+});
+
 app.put('/admin/users/:id/approve', authenticateToken, requireAdmin, async (req, res) => {
     const { status, rejection_reason } = req.body;
 

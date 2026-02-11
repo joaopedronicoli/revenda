@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Users, Search, Shield, CheckCircle, XCircle, Mail, DollarSign, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Users, Search, Shield, CheckCircle, XCircle, Mail, DollarSign, ToggleLeft, ToggleRight, UserPlus } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 
@@ -34,6 +34,10 @@ export default function AffiliateManagement() {
     const [loading, setLoading] = useState(true)
     const [search, setSearch] = useState('')
     const [toggling, setToggling] = useState(null)
+    const [showAddAffiliate, setShowAddAffiliate] = useState(false)
+    const [newAffiliate, setNewAffiliate] = useState({ name: '', email: '', telefone: '', affiliate_type: 'gratuito' })
+    const [creating, setCreating] = useState(false)
+    const [createError, setCreateError] = useState('')
 
     useEffect(() => {
         loadAffiliates()
@@ -58,13 +62,40 @@ export default function AffiliateManagement() {
         try {
             await api.put(`/admin/affiliates/${affiliateId}/status`, { status: newStatus })
             setAffiliates(prev =>
-                prev.map(a => a.id === affiliateId ? { ...a, status: newStatus } : a)
+                prev.map(a => a.id === affiliateId ? { ...a, affiliate_status: newStatus } : a)
             )
         } catch (err) {
             console.error('Error toggling affiliate status:', err)
             alert('Erro ao alterar status do afiliado')
         } finally {
             setToggling(null)
+        }
+    }
+
+    const createAffiliate = async () => {
+        if (!newAffiliate.name || !newAffiliate.email) {
+            setCreateError('Nome e email sao obrigatorios')
+            return
+        }
+        setCreating(true)
+        setCreateError('')
+        try {
+            await api.post('/admin/users', {
+                name: newAffiliate.name,
+                email: newAffiliate.email,
+                telefone: newAffiliate.telefone,
+                role: 'client',
+                approval_status: 'approved',
+                affiliate_type: newAffiliate.affiliate_type
+            })
+            setShowAddAffiliate(false)
+            setNewAffiliate({ name: '', email: '', telefone: '', affiliate_type: 'gratuito' })
+            loadAffiliates()
+        } catch (err) {
+            console.error('Error creating affiliate:', err)
+            setCreateError(err.response?.data?.message || 'Erro ao criar afiliado')
+        } finally {
+            setCreating(false)
         }
     }
 
@@ -85,9 +116,18 @@ export default function AffiliateManagement() {
                     <h1 className="text-2xl font-bold text-slate-900">Afiliados</h1>
                     <p className="text-slate-500">Gerencie os afiliados e suas comissoes</p>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                    <Users className="w-4 h-4" />
-                    {affiliates.length} afiliados
+                <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <Users className="w-4 h-4" />
+                        {affiliates.length} afiliados
+                    </div>
+                    <button
+                        onClick={() => setShowAddAffiliate(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                    >
+                        <UserPlus className="w-4 h-4" />
+                        Adicionar Afiliado
+                    </button>
                 </div>
             </div>
 
@@ -133,9 +173,9 @@ export default function AffiliateManagement() {
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {filteredAffiliates.map((affiliate) => {
-                                    const type = typeConfig[affiliate.type] || typeConfig.gratuito
-                                    const level = levelConfig[affiliate.level] || levelConfig.bronze
-                                    const status = statusConfig[affiliate.status] || statusConfig.active
+                                    const type = typeConfig[affiliate.affiliate_type] || typeConfig.gratuito
+                                    const level = levelConfig[affiliate.affiliate_level] || levelConfig.bronze
+                                    const status = statusConfig[affiliate.affiliate_status] || statusConfig.active
                                     const StatusIcon = status.icon
 
                                     return (
@@ -163,7 +203,7 @@ export default function AffiliateManagement() {
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-600">
-                                                {affiliate.sales_count || 0}
+                                                {affiliate.affiliate_sales_count || 0}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-1 text-sm font-medium text-slate-900">
@@ -179,20 +219,20 @@ export default function AffiliateManagement() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <button
-                                                    onClick={() => toggleStatus(affiliate.id, affiliate.status)}
+                                                    onClick={() => toggleStatus(affiliate.id, affiliate.affiliate_status)}
                                                     disabled={toggling === affiliate.id}
                                                     className={`flex items-center gap-1 text-sm font-medium transition-colors disabled:opacity-50 ${
-                                                        affiliate.status === 'active'
+                                                        affiliate.affiliate_status === 'active'
                                                             ? 'text-red-600 hover:text-red-700'
                                                             : 'text-green-600 hover:text-green-700'
                                                     }`}
-                                                    title={affiliate.status === 'active' ? 'Desativar' : 'Ativar'}
+                                                    title={affiliate.affiliate_status === 'active' ? 'Desativar' : 'Ativar'}
                                                 >
-                                                    {affiliate.status === 'active'
+                                                    {affiliate.affiliate_status === 'active'
                                                         ? <ToggleRight className="w-5 h-5" />
                                                         : <ToggleLeft className="w-5 h-5" />
                                                     }
-                                                    {affiliate.status === 'active' ? 'Desativar' : 'Ativar'}
+                                                    {affiliate.affiliate_status === 'active' ? 'Desativar' : 'Ativar'}
                                                 </button>
                                             </td>
                                         </tr>
@@ -203,6 +243,88 @@ export default function AffiliateManagement() {
                     </div>
                 )}
             </div>
+            {/* Add Affiliate Modal */}
+            {showAddAffiliate && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl max-w-md w-full">
+                        <div className="p-6 border-b border-slate-200">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold text-slate-900">Adicionar Afiliado</h2>
+                                <button
+                                    onClick={() => { setShowAddAffiliate(false); setCreateError('') }}
+                                    className="text-slate-400 hover:text-slate-600 text-xl"
+                                >
+                                    &times;
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            {createError && (
+                                <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+                                    {createError}
+                                </div>
+                            )}
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
+                                <input
+                                    type="text"
+                                    value={newAffiliate.name}
+                                    onChange={(e) => setNewAffiliate(prev => ({ ...prev, name: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="Nome do afiliado"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+                                <input
+                                    type="email"
+                                    value={newAffiliate.email}
+                                    onChange={(e) => setNewAffiliate(prev => ({ ...prev, email: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="email@exemplo.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
+                                <input
+                                    type="text"
+                                    value={newAffiliate.telefone}
+                                    onChange={(e) => setNewAffiliate(prev => ({ ...prev, telefone: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                    placeholder="(11) 99999-9999"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Afiliado</label>
+                                <select
+                                    value={newAffiliate.affiliate_type}
+                                    onChange={(e) => setNewAffiliate(prev => ({ ...prev, affiliate_type: e.target.value }))}
+                                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                >
+                                    <option value="gratuito">Gratuito</option>
+                                    <option value="renda_extra">Renda Extra</option>
+                                    <option value="influencer_pro">Influencer Pro</option>
+                                </select>
+                            </div>
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    onClick={() => { setShowAddAffiliate(false); setCreateError('') }}
+                                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={createAffiliate}
+                                    disabled={creating}
+                                    className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                    {creating ? 'Criando...' : 'Criar Afiliado'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

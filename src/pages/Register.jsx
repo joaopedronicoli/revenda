@@ -292,7 +292,7 @@ export default function Register() {
                 console.error('Webhook notification failed:', webhookError)
             }
 
-            navigate('/')
+            navigate('/login', { state: { showVerificationMessage: true } })
         } catch (err) {
             setError(err.response?.data?.message || err.message)
         } finally {

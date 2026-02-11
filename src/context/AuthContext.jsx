@@ -44,7 +44,8 @@ const mergeLocalUser = (fullUser, localUser) => {
         points: localUser.points || 0,
         total_accumulated: parseFloat(localUser.total_accumulated) || 0,
         affiliate_type: localUser.affiliate_type,
-        affiliate_status: localUser.affiliate_status
+        affiliate_status: localUser.affiliate_status,
+        email_verified: localUser.email_verified !== undefined ? localUser.email_verified : true
     }
 
     // Set cart store discount based on user level
@@ -166,6 +167,14 @@ export const AuthProvider = ({ children }) => {
 
         salvarCriptografado(AUTH_KEY, { token, user: mergedUser })
         setUser(mergedUser)
+
+        // Enviar email de verificacao apos registro
+        try {
+            await api.post('/auth/send-verification', { email })
+        } catch (verifyErr) {
+            console.warn('Erro ao enviar email de verificacao:', verifyErr.message)
+        }
+
         return { user: mergedUser }
     }
 
@@ -188,13 +197,27 @@ export const AuthProvider = ({ children }) => {
     }
 
     const requestOTP = async (email, sendVia = 'whatsapp') => {
+        if (sendVia === 'email') {
+            // Email OTP via revenda backend
+            const response = await api.post('/auth/request-otp', { email })
+            return response.data
+        }
+        // WhatsApp OTP via central-pelg (existente)
         const response = await centralApi.post('/auth/magic-link', { email, sendVia })
         return response.data
     }
 
-    const verifyOTP = async (email, otp) => {
-        const response = await centralApi.post('/auth/verify-otp', { email, otp })
-        const { token } = response.data
+    const verifyOTP = async (email, otp, sendVia = 'whatsapp') => {
+        let token
+        if (sendVia === 'email') {
+            // Verificar OTP via revenda backend
+            const response = await api.post('/auth/verify-otp', { email, otp })
+            token = response.data.token
+        } else {
+            // Verificar OTP via central-pelg (existente)
+            const response = await centralApi.post('/auth/verify-otp', { email, otp })
+            token = response.data.token
+        }
 
         salvarCriptografado(AUTH_KEY, { token, user: {} })
         const meResponse = await centralApi.get('/auth/me', {
@@ -211,12 +234,31 @@ export const AuthProvider = ({ children }) => {
     }
 
     const forgotPassword = async (email, sendVia = 'whatsapp') => {
+        if (sendVia === 'email') {
+            // Reset por email via revenda backend
+            const response = await api.post('/auth/forgot-password', { email })
+            return response.data
+        }
+        // Reset por WhatsApp via central-pelg (existente)
         const response = await centralApi.post('/auth/forgot-password', { email, sendVia })
         return response.data
     }
 
     const resetPassword = async (token, newPassword) => {
-        const response = await centralApi.post('/auth/reset-password', { token, newPassword })
+        // Tenta revenda primeiro (email reset), fallback para central-pelg
+        try {
+            const response = await api.post('/auth/reset-password', { token, newPassword })
+            return response.data
+        } catch (err) {
+            // Fallback: pode ser um token de reset do central-pelg (via whatsapp)
+            const response = await centralApi.post('/auth/reset-password', { token, newPassword })
+            return response.data
+        }
+    }
+
+    const resendVerificationEmail = async () => {
+        if (!user?.email) throw new Error('Email nao encontrado')
+        const response = await api.post('/auth/send-verification', { email: user.email })
         return response.data
     }
 
@@ -247,6 +289,7 @@ export const AuthProvider = ({ children }) => {
     const isManager = useMemo(() => userRole === 'manager', [userRole])
     const canAccessAdmin = useMemo(() => ['administrator', 'admin', 'manager'].includes(userRole), [userRole])
     const isApproved = useMemo(() => approvalStatus === 'approved', [approvalStatus])
+    const isEmailVerified = useMemo(() => user?.email_verified !== false, [user?.email_verified])
 
     // Aliases for backward compatibility
     const refreshRole = refreshUser
@@ -261,6 +304,7 @@ export const AuthProvider = ({ children }) => {
             isManager,
             canAccessAdmin,
             isApproved,
+            isEmailVerified,
             login,
             register,
             loginWithGoogle,
@@ -268,6 +312,7 @@ export const AuthProvider = ({ children }) => {
             verifyOTP,
             forgotPassword,
             resetPassword,
+            resendVerificationEmail,
             logout,
             loading,
             roleLoading,

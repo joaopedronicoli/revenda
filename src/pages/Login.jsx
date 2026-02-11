@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useNavigate, Link } from 'react-router-dom'
-import { Loader2, Eye, EyeOff, Smartphone, Mail, ArrowLeft } from 'lucide-react'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
+import { Loader2, Eye, EyeOff, Smartphone, Mail, ArrowLeft, CheckCircle } from 'lucide-react'
 
 export default function Login() {
     const [loading, setLoading] = useState(false)
@@ -10,6 +10,8 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false)
     const { login, requestOTP, verifyOTP, forgotPassword } = useAuth()
     const navigate = useNavigate()
+    const location = useLocation()
+    const showVerificationMessage = location.state?.showVerificationMessage
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
@@ -73,7 +75,7 @@ export default function Login() {
         setLoading(true)
 
         try {
-            await verifyOTP(email, otpCode)
+            await verifyOTP(email, otpCode, sendVia)
             navigate('/')
         } catch (err) {
             setError(err.response?.data?.message || 'Codigo invalido ou expirado')
@@ -98,6 +100,16 @@ export default function Login() {
                     </h1>
                     <p className="text-slate-500 font-medium">Portal do Revendedor</p>
                 </div>
+
+                {showVerificationMessage && (
+                    <div className="bg-blue-50 text-blue-700 p-4 rounded-lg mb-6 text-sm border border-blue-100 flex items-start gap-2">
+                        <CheckCircle size={18} className="mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p className="font-semibold">Cadastro realizado com sucesso!</p>
+                            <p>Enviamos um link de verificacao para o seu email. Verifique sua caixa de entrada e spam.</p>
+                        </div>
+                    </div>
+                )}
 
                 {error && (
                     <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-sm border border-red-100">

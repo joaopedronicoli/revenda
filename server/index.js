@@ -1,9 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const db = require('./db');
 const ipagService = require('./ipagService');
 const woocommerceService = require('./woocommerceService');
+const emailService = require('./emailService');
 const { updateSchema } = require('./setup_db');
 require('dotenv').config();
 
@@ -340,7 +342,7 @@ app.get('/users/me', authenticateToken, async (req, res) => {
             const { rows } = await db.query(
                 `SELECT id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, approval_status, rejection_reason, created_at,
                  level, commission_balance, referral_code, has_purchased_kit, first_order_completed, points, total_accumulated,
-                 affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count
+                 affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, email_verified
                  FROM users WHERE id = $1`,
                 [req.user.id]
             );
@@ -368,6 +370,7 @@ app.get('/users/me', authenticateToken, async (req, res) => {
             user.affiliate_status = null;
             user.affiliate_level = null;
             user.affiliate_sales_count = 0;
+            user.email_verified = true;
             return res.json(user);
         }
     } catch (err) {
@@ -2223,6 +2226,260 @@ app.post('/webhooks/woocommerce', async (req, res) => {
     } catch (err) {
         console.error('Erro ao processar webhook WooCommerce:', err.message);
         res.sendStatus(500);
+    }
+});
+
+// =============================================
+// AUTH ROUTES (Email verification, Reset, OTP)
+// Rotas publicas — sem authenticateToken
+// =============================================
+
+// 1. Enviar email de verificacao
+app.post('/auth/send-verification', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
+
+    try {
+        const { rows } = await db.query(
+            'SELECT id, name, email_verified FROM users WHERE email = $1',
+            [email]
+        );
+        if (rows.length === 0) {
+            return res.json({ message: 'Se o email existir, voce recebera o link de verificacao.' });
+        }
+
+        const user = rows[0];
+        if (user.email_verified) {
+            return res.json({ message: 'Email ja verificado.' });
+        }
+
+        const token = jwt.sign(
+            { userId: user.id, email, type: 'email-verification' },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        await db.query(
+            `UPDATE users SET email_verification_token = $1, email_verification_expires = NOW() + INTERVAL '24 hours' WHERE id = $2`,
+            [token, user.id]
+        );
+
+        const result = await emailService.sendVerificationEmail(email, user.name || 'Cliente', token);
+        if (!result.success) {
+            console.error('Erro ao enviar email de verificacao:', result.error);
+        }
+
+        res.json({ message: 'Se o email existir, voce recebera o link de verificacao.' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao processar solicitacao' });
+    }
+});
+
+// 2. Verificar email (via token do link)
+app.post('/auth/verify-email', async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ message: 'Token obrigatorio' });
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded.type !== 'email-verification') {
+            return res.status(400).json({ message: 'Token invalido' });
+        }
+
+        const { rows } = await db.query(
+            'SELECT id FROM users WHERE id = $1 AND email_verification_token = $2 AND email_verification_expires > NOW()',
+            [decoded.userId, token]
+        );
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: 'Token expirado ou invalido' });
+        }
+
+        await db.query(
+            'UPDATE users SET email_verified = true, email_verification_token = NULL, email_verification_expires = NULL WHERE id = $1',
+            [decoded.userId]
+        );
+
+        res.json({ message: 'Email verificado com sucesso!' });
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+            return res.status(400).json({ message: 'Token expirado' });
+        }
+        console.error(err);
+        res.status(400).json({ message: 'Token invalido' });
+    }
+});
+
+// 3. Esqueci minha senha (por email)
+app.post('/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
+
+    try {
+        const { rows } = await db.query(
+            'SELECT id, name, central_user_id FROM users WHERE email = $1',
+            [email]
+        );
+
+        if (rows.length === 0) {
+            return res.json({ message: 'Se o email existir, voce recebera as instrucoes.' });
+        }
+
+        const user = rows[0];
+
+        const token = jwt.sign(
+            { userId: user.id, centralUserId: user.central_user_id, email, type: 'password-reset' },
+            process.env.JWT_SECRET,
+            { expiresIn: '1h' }
+        );
+
+        await db.query(
+            `UPDATE users SET reset_token = $1, reset_token_expires = NOW() + INTERVAL '1 hour' WHERE id = $2`,
+            [token, user.id]
+        );
+
+        const result = await emailService.sendPasswordResetEmail(email, user.name || 'Cliente', token);
+        if (!result.success) {
+            console.error('Erro ao enviar email de reset:', result.error);
+        }
+
+        res.json({ message: 'Se o email existir, voce recebera as instrucoes.' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao processar solicitacao' });
+    }
+});
+
+// 4. Resetar senha com token (chama central-pelg para trocar a senha)
+app.post('/auth/reset-password', async (req, res) => {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+        return res.status(400).json({ message: 'Token e nova senha sao obrigatorios' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        if (decoded.type !== 'password-reset') {
+            return res.status(400).json({ message: 'Token invalido' });
+        }
+
+        const { rows } = await db.query(
+            'SELECT id, email FROM users WHERE id = $1 AND reset_token = $2 AND reset_token_expires > NOW()',
+            [decoded.userId, token]
+        );
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: 'Token expirado ou invalido' });
+        }
+
+        // Chamar central-pelg para trocar a senha
+        const centralApiUrl = process.env.CENTRAL_API_URL || 'https://central.pelg.com.br';
+        const axios = require('axios');
+        const response = await axios.post(`${centralApiUrl}/internal/change-password`, {
+            email: decoded.email,
+            newPassword
+        }, {
+            headers: { 'X-Internal-Key': process.env.INTERNAL_API_KEY }
+        });
+
+        if (!response.data.success) {
+            return res.status(500).json({ message: 'Erro ao alterar senha no servidor central' });
+        }
+
+        // Limpar token de reset
+        await db.query(
+            'UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = $1',
+            [decoded.userId]
+        );
+
+        res.json({ message: 'Senha alterada com sucesso!' });
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+            return res.status(400).json({ message: 'Token expirado' });
+        }
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao resetar senha' });
+    }
+});
+
+// 5. Solicitar OTP por email
+app.post('/auth/request-otp', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
+
+    try {
+        const { rows } = await db.query(
+            'SELECT id, central_user_id FROM users WHERE email = $1',
+            [email]
+        );
+
+        if (rows.length === 0) {
+            return res.json({ message: 'Se o email existir, voce recebera o codigo.' });
+        }
+
+        const user = rows[0];
+
+        // Gerar OTP de 6 digitos
+        const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+
+        await db.query(
+            `UPDATE users SET otp_code = $1, otp_expires = NOW() + INTERVAL '15 minutes' WHERE id = $2`,
+            [otpCode, user.id]
+        );
+
+        const result = await emailService.sendOTPEmail(email, otpCode);
+        if (!result.success) {
+            console.error('Erro ao enviar OTP por email:', result.error);
+            return res.status(500).json({ message: 'Erro ao enviar email.' });
+        }
+
+        res.json({ message: 'Se o email existir, voce recebera o codigo.', requiresOTP: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao processar solicitacao' });
+    }
+});
+
+// 6. Verificar OTP e autenticar
+app.post('/auth/verify-otp', async (req, res) => {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+        return res.status(400).json({ message: 'Email e codigo sao obrigatorios' });
+    }
+
+    try {
+        const { rows } = await db.query(
+            'SELECT id, central_user_id, email, role FROM users WHERE email = $1 AND otp_code = $2 AND otp_expires > NOW()',
+            [email, otp]
+        );
+
+        if (rows.length === 0) {
+            return res.status(400).json({ message: 'Codigo invalido ou expirado' });
+        }
+
+        const user = rows[0];
+
+        // Limpar OTP apos uso
+        await db.query(
+            'UPDATE users SET otp_code = NULL, otp_expires = NULL WHERE id = $1',
+            [user.id]
+        );
+
+        // Emitir JWT com central_user_id como id (compativel com o middleware authenticateToken)
+        const accessToken = jwt.sign(
+            { id: user.central_user_id, email: user.email, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: '24h' }
+        );
+
+        res.json({
+            token: accessToken,
+            user: { id: user.central_user_id, email: user.email, role: user.role }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao verificar codigo' });
     }
 });
 

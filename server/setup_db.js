@@ -50,6 +50,14 @@ const updateSchema = async () => {
       { name: 'affiliate_status', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_status VARCHAR(20)" },
       { name: 'affiliate_level', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_level VARCHAR(50)" },
       { name: 'affiliate_sales_count', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_sales_count INTEGER DEFAULT 0" },
+      // Email verification & auth columns
+      { name: 'email_verified', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false" },
+      { name: 'email_verification_token', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token TEXT" },
+      { name: 'email_verification_expires', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP" },
+      { name: 'otp_code', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_code VARCHAR(6)" },
+      { name: 'otp_expires', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires TIMESTAMP" },
+      { name: 'reset_token', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token TEXT" },
+      { name: 'reset_token_expires', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires TIMESTAMP" },
     ];
 
     for (const col of userColumns) {
@@ -339,6 +347,10 @@ const updateSchema = async () => {
       AND id IN (SELECT DISTINCT user_id FROM orders WHERE status IN ('completed','processing','paid'))
     `);
     console.log('Migracao de usuarios existentes concluida.');
+
+    // Marcar usuarios existentes como email verificado (nao bloquear quem ja esta cadastrado)
+    await db.query(`UPDATE users SET email_verified = true WHERE email_verified = false OR email_verified IS NULL`);
+    console.log('Migracao email_verified para usuarios existentes concluida.');
 
     console.log('Schema revenda_pelg atualizado com sucesso!');
   } catch (err) {

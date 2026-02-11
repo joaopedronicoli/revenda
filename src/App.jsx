@@ -4,6 +4,8 @@ import { ThemeProvider } from './context/ThemeContext'
 import Register from './pages/Register'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
+import VerifyEmail from './pages/VerifyEmail'
+import PendingVerification from './pages/PendingVerification'
 import PendingApproval from './pages/PendingApproval'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
@@ -17,15 +19,20 @@ import AffiliateDashboard from './pages/AffiliateDashboard'
 import Layout from './components/Layout'
 import AdminApp from './admin/AdminApp'
 
-const ProtectedRoute = ({ children, allowPending = false }) => {
-  const { user, loading, approvalStatus, roleLoading, canAccessAdmin } = useAuth()
+const ProtectedRoute = ({ children, allowPending = false, allowUnverified = false }) => {
+  const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified } = useAuth()
 
   if (loading || roleLoading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>
 
   if (!user) return <Navigate to="/login" />
 
-  // Allow admins to bypass approval check
+  // Allow admins to bypass all checks
   if (canAccessAdmin) return children
+
+  // Check email verification first
+  if (!allowUnverified && !isEmailVerified) {
+    return <Navigate to="/pending-verification" />
+  }
 
   // Block non-approved users unless explicitly allowed
   if (!allowPending && approvalStatus !== 'approved') {
@@ -44,6 +51,13 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+
+            <Route path="/pending-verification" element={
+              <ProtectedRoute allowPending={true} allowUnverified={true}>
+                <PendingVerification />
+              </ProtectedRoute>
+            } />
 
             <Route path="/pending-approval" element={
               <ProtectedRoute allowPending={true}>

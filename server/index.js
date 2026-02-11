@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const db = require('./db');
 const ipagService = require('./ipagService');
 const woocommerceService = require('./woocommerceService');
+const { updateSchema } = require('./setup_db');
 require('dotenv').config();
 
 const app = express();
@@ -2128,6 +2129,17 @@ app.post('/webhooks/woocommerce', async (req, res) => {
 // =============================================
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Revenda API rodando na porta ${PORT}`);
-});
+
+// Roda setup do banco automaticamente ao iniciar, depois sobe o servidor
+updateSchema()
+    .then(() => {
+        app.listen(PORT, () => {
+            console.log(`Revenda API rodando na porta ${PORT}`);
+        });
+    })
+    .catch((err) => {
+        console.error('Erro no setup do banco, iniciando mesmo assim:', err.message);
+        app.listen(PORT, () => {
+            console.log(`Revenda API rodando na porta ${PORT} (sem setup completo)`);
+        });
+    });

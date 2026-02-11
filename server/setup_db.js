@@ -328,11 +328,15 @@ const updateSchema = async () => {
     console.log('Migracao de usuarios existentes concluida.');
 
     console.log('Schema revenda_pelg atualizado com sucesso!');
-    process.exit(0);
   } catch (err) {
     console.error('Erro ao atualizar schema:', err);
-    process.exit(1);
+    throw err;
   }
 };
 
-updateSchema();
+// Se executado diretamente (node setup_db.js), roda e sai
+if (require.main === module) {
+  updateSchema().then(() => process.exit(0)).catch(() => process.exit(1));
+}
+
+module.exports = { updateSchema };

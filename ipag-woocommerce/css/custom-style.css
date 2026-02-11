@@ -1,0 +1,15 @@
+/*
+ * Você pode adicionar estilos personalizados aqui
+*/
+
+/* ocultar list-style das bandeiras */
+#payment .payment_methods li { list-style: none!important; }
+/* tamanho da bandeira ao lado do número do cartão */
+​#payment .payment_methods li img { max-height: 1.618em; }
+
+/**
+* Custom table altera o estilo da form de cartão de crédito
+**/
+.custom-table {}
+.custom-table tr{}
+.custom-table tr td{}

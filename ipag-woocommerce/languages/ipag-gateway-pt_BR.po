@@ -1,0 +1,795 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: iPag Payment Gateway\n"
+"POT-Creation-Date: 2021-06-25 11:58-0300\n"
+"PO-Revision-Date: 2021-06-25 11:59-0300\n"
+"Last-Translator: \n"
+"Language-Team: Guilherme Motta <guifmotta@weblibre.com.br>\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.4.2\n"
+"X-Poedit-Basepath: ..\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-KeywordsList: __;_e;_x\n"
+"X-Poedit-SearchPath-0: .\n"
+
+#: classes/gateway_loader.php:87 classes/gateway_loader.php:151
+msgid "Payment Details"
+msgstr "Detalhes do Pagamento"
+
+#: classes/gateway_loader.php:90 classes/gateway_loader.php:154
+msgid "Transaction ID:"
+msgstr "ID da Transação:"
+
+#: classes/gateway_loader.php:93 classes/gateway_loader.php:157
+msgid "Transaction Message:"
+msgstr "Mensagem da Transação:"
+
+#: classes/gateway_loader.php:96 classes/gateway_loader.php:160
+msgid "Operator Message:"
+msgstr "Mensagem da Operadora:"
+
+#: classes/gateway_loader.php:100 classes/gateway_loader.php:164
+#: templates/ipag-gateway-template-cartaoduplo.php:113
+#: templates/ipag-gateway-template-cartaoduplo.php:177
+#: templates/ipag-gateway-template-credito.php:207
+msgid "Installments Number:"
+msgstr "Número de parcelas:"
+
+#: classes/gateway_loader.php:105 classes/gateway_loader.php:169
+msgid "Card Brand:"
+msgstr "Bandeira do Cartão:"
+
+#: classes/gateway_loader.php:111 classes/gateway_loader.php:175
+msgid "Subscription"
+msgstr "Assinatura"
+
+#: classes/gateway_loader.php:113 classes/gateway_loader.php:177
+msgid "Last Payment:"
+msgstr "Último Pagamento:"
+
+#: classes/gateway_loader.php:118 classes/gateway_loader.php:120
+#: classes/gateway_loader.php:182
+msgid "Capture"
+msgstr "Capturar"
+
+#: classes/gateway_loader.php:123 classes/gateway_loader.php:185
+#: classes/ipag-gateway-boleto.php:182 classes/ipag-gateway-boleto.php:448
+msgid "Imprimir Boleto"
+msgstr "Imprimir Boleto"
+
+#: classes/gateway_loader.php:126 classes/ipag-gateway-pix.php:168
+#: classes/ipag-gateway-pix.php:362
+msgid "Visualizar QRCode"
+msgstr "Visualizar QRCode"
+
+#: classes/gateway_loader.php:129 classes/gateway_loader.php:188
+msgid "Consult"
+msgstr "Consultar"
+
+#: classes/gateway_loader.php:224
+msgid "Transaction Initiated"
+msgstr "Transação Iniciada"
+
+#: classes/gateway_loader.php:225
+msgid "Printed Billet"
+msgstr "Boleto Impresso"
+
+#: classes/gateway_loader.php:226
+msgid "Transaction Canceled"
+msgstr "Transação Cancelada"
+
+#: classes/gateway_loader.php:227
+msgid "Transaction In Analysis"
+msgstr "Transação em Análise"
+
+#: classes/gateway_loader.php:228
+msgid "Transaction Approved"
+msgstr "Transação Aprovada"
+
+#: classes/gateway_loader.php:229
+msgid "Transaction Approved Partial Value"
+msgstr "Transação Aprovada com Valor Parcial"
+
+#: classes/gateway_loader.php:230
+msgid "Transaction Refused"
+msgstr "Transação Recusada"
+
+#: classes/gateway_loader.php:231
+msgid "Transaction Approved & Captured"
+msgstr "Transação Aprovada e Capturada"
+
+#: classes/gateway_loader.php:474
+msgid "Waiting Payment"
+msgstr "Aguardando Pagamento"
+
+#: classes/gateway_loader.php:816 classes/gateway_loader.php:846
+msgid "Consulting..."
+msgstr "Consultando ..."
+
+#: classes/gateway_loader.php:829 classes/gateway_loader.php:859
+msgid "Consulted"
+msgstr "Consultado"
+
+#: classes/ipag-gateway-boleto.php:11 classes/ipag-gateway-boleto.php:57
+msgid "iPag - Billet"
+msgstr "iPag - Boleto"
+
+#: classes/ipag-gateway-boleto.php:12 classes/ipag-gateway-cartaoduplo.php:12
+#: classes/ipag-gateway-credito.php:12 classes/ipag-gateway-debito.php:12
+#: classes/ipag-gateway-itaushopline.php:12 classes/ipag-gateway-pix.php:19
+msgid "iPag Secure Payment"
+msgstr "iPag Pagamento Seguro"
+
+#: classes/ipag-gateway-boleto.php:48 classes/ipag-gateway-cartaoduplo.php:56
+#: classes/ipag-gateway-credito.php:56 classes/ipag-gateway-debito.php:40
+#: classes/ipag-gateway-itaushopline.php:41 classes/ipag-gateway-pix.php:50
+msgid "Enable iPag Payment Gateway"
+msgstr "Ativar iPag Gateway de Pagamento"
+
+#: classes/ipag-gateway-boleto.php:50 classes/ipag-gateway-boleto.php:121
+#: classes/ipag-gateway-cartaoduplo.php:58
+#: classes/ipag-gateway-cartaoduplo.php:171 classes/ipag-gateway-credito.php:58
+#: classes/ipag-gateway-credito.php:171 classes/ipag-gateway-credito.php:178
+#: classes/ipag-gateway-credito.php:216 classes/ipag-gateway-credito.php:218
+#: classes/ipag-gateway-debito.php:42 classes/ipag-gateway-debito.php:90
+#: classes/ipag-gateway-itaushopline.php:43
+#: classes/ipag-gateway-itaushopline.php:93 classes/ipag-gateway-pix.php:52
+#: classes/ipag-gateway-pix.php:95
+msgid "Enable"
+msgstr "Habilitar"
+
+#: classes/ipag-gateway-boleto.php:54 classes/ipag-gateway-cartaoduplo.php:62
+#: classes/ipag-gateway-credito.php:62 classes/ipag-gateway-debito.php:46
+#: classes/ipag-gateway-itaushopline.php:47 classes/ipag-gateway-pix.php:56
+msgid "iPag Title"
+msgstr "Título"
+
+#: classes/ipag-gateway-boleto.php:56 classes/ipag-gateway-cartaoduplo.php:64
+#: classes/ipag-gateway-credito.php:64 classes/ipag-gateway-debito.php:48
+#: classes/ipag-gateway-itaushopline.php:49 classes/ipag-gateway-pix.php:58
+msgid "This controls the title that users will see during checkout."
+msgstr "Isso controla o título que os usuários verão durante o checkout."
+
+#: classes/ipag-gateway-boleto.php:61 classes/ipag-gateway-cartaoduplo.php:69
+#: classes/ipag-gateway-credito.php:69 classes/ipag-gateway-debito.php:53
+#: classes/ipag-gateway-itaushopline.php:54 classes/ipag-gateway-pix.php:63
+msgid "Store Identification"
+msgstr "Login iPag"
+
+#: classes/ipag-gateway-boleto.php:63 classes/ipag-gateway-cartaoduplo.php:71
+#: classes/ipag-gateway-credito.php:71 classes/ipag-gateway-debito.php:55
+#: classes/ipag-gateway-itaushopline.php:56 classes/ipag-gateway-pix.php:65
+msgid "Your store identification registered at iPag Panel."
+msgstr "A identificação de sua loja fornecido pelo iPag."
+
+#: classes/ipag-gateway-boleto.php:68 classes/ipag-gateway-cartaoduplo.php:76
+#: classes/ipag-gateway-credito.php:76 classes/ipag-gateway-debito.php:60
+#: classes/ipag-gateway-itaushopline.php:61 classes/ipag-gateway-pix.php:70
+msgid "Ipag API KEY"
+msgstr "Ipag API KEY"
+
+#: classes/ipag-gateway-boleto.php:70 classes/ipag-gateway-cartaoduplo.php:78
+#: classes/ipag-gateway-credito.php:78 classes/ipag-gateway-debito.php:62
+#: classes/ipag-gateway-itaushopline.php:63 classes/ipag-gateway-pix.php:72
+msgid "Your store API KEY at iPag Panel."
+msgstr "A API KEY de sua loja fornecida pelo iPag."
+
+#: classes/ipag-gateway-boleto.php:75
+msgid "Bank Billet's Emitter"
+msgstr "Banco Emissor do Boleto"
+
+#: classes/ipag-gateway-boleto.php:77
+msgid "Select the bank billet's emitter."
+msgstr "Selecione o emissor do boleto bancário."
+
+#: classes/ipag-gateway-boleto.php:96 classes/ipag-gateway-itaushopline.php:68
+msgid "Days To Pay"
+msgstr "Dias para pagar"
+
+#: classes/ipag-gateway-boleto.php:98 classes/ipag-gateway-itaushopline.php:70
+msgid "Quantity of days that your client has to pay the billet."
+msgstr "Quantidade de dias que o cliente tem para pagar o boleto."
+
+#: classes/ipag-gateway-boleto.php:103 classes/ipag-gateway-itaushopline.php:75
+#: classes/ipag-gateway-pix.php:77
+msgid "Checkout Message"
+msgstr "Mensagem no Checkout"
+
+#: classes/ipag-gateway-boleto.php:105
+msgid "This controls the message that users will see before print the billet."
+msgstr ""
+"Isto controla a mensagem que os usuários verão antes de imprimir o boleto."
+
+#: classes/ipag-gateway-boleto.php:106
+msgid "Confirm your order to print the billet."
+msgstr "Confirme seu pedido para imprimir o boleto."
+
+#: classes/ipag-gateway-boleto.php:110 classes/ipag-gateway-boleto.php:127
+#: classes/ipag-gateway-cartaoduplo.php:160
+#: classes/ipag-gateway-credito.php:160 classes/ipag-gateway-credito.php:222
+#: classes/ipag-gateway-debito.php:79 classes/ipag-gateway-itaushopline.php:82
+#: classes/ipag-gateway-pix.php:84
+msgid "Environment"
+msgstr "Ambiente"
+
+#: classes/ipag-gateway-boleto.php:115 classes/ipag-gateway-boleto.php:132
+#: classes/ipag-gateway-cartaoduplo.php:165
+#: classes/ipag-gateway-credito.php:165 classes/ipag-gateway-credito.php:227
+#: classes/ipag-gateway-debito.php:84 classes/ipag-gateway-itaushopline.php:87
+#: classes/ipag-gateway-pix.php:89
+msgid "Test"
+msgstr "Teste"
+
+#: classes/ipag-gateway-boleto.php:116 classes/ipag-gateway-boleto.php:133
+#: classes/ipag-gateway-cartaoduplo.php:166
+#: classes/ipag-gateway-credito.php:166 classes/ipag-gateway-credito.php:228
+#: classes/ipag-gateway-debito.php:85 classes/ipag-gateway-itaushopline.php:88
+#: classes/ipag-gateway-pix.php:90
+msgid "Production"
+msgstr "Produção"
+
+#: classes/ipag-gateway-boleto.php:120 classes/ipag-gateway-cartaoduplo.php:170
+#: classes/ipag-gateway-credito.php:170 classes/ipag-gateway-debito.php:89
+#: classes/ipag-gateway-itaushopline.php:92 classes/ipag-gateway-pix.php:94
+msgid "Enable Debug"
+msgstr "Ativar depuração"
+
+#: classes/ipag-gateway-boleto.php:137 classes/ipag-gateway-credito.php:232
+msgid "PagSeguro Email"
+msgstr "PagSeguro Email"
+
+#: classes/ipag-gateway-boleto.php:140 classes/ipag-gateway-credito.php:235
+msgid "E-mail para integração com PagSeguro"
+msgstr "E-mail para integração com PagSeguro"
+
+#: classes/ipag-gateway-boleto.php:144 classes/ipag-gateway-credito.php:239
+msgid "PagSeguro Token"
+msgstr "PagSeguro Token"
+
+#: classes/ipag-gateway-boleto.php:147 classes/ipag-gateway-credito.php:242
+msgid "Token para integração com PagSeguro"
+msgstr "Token para integração com PagSeguro"
+
+#: classes/ipag-gateway-boleto.php:156
+msgid "iPag Payment Gateway - Billet"
+msgstr "Método de Pagamento iPag - Boleto"
+
+#: classes/ipag-gateway-boleto.php:183 classes/ipag-gateway-boleto.php:450
+msgid "Clique no link ao lado para imprimir o boleto."
+msgstr "Clique no link ao lado para imprimir o boleto."
+
+#: classes/ipag-gateway-boleto.php:271
+msgid " Erro ao processar boleto PagSeguro, entre em contato com o lojista!"
+msgstr " Erro ao processar boleto PagSeguro, entre em contato com o lojista!"
+
+#: classes/ipag-gateway-boleto.php:272 classes/ipag-gateway-boleto.php:424
+#: classes/ipag-gateway-cartaoduplo.php:540
+#: classes/ipag-gateway-cartaoduplo.php:543
+#: classes/ipag-gateway-cartaoduplo.php:546
+#: classes/ipag-gateway-cartaoduplo.php:549
+#: classes/ipag-gateway-cartaoduplo.php:552
+#: classes/ipag-gateway-cartaoduplo.php:555
+#: classes/ipag-gateway-cartaoduplo.php:558
+#: classes/ipag-gateway-cartaoduplo.php:561
+#: classes/ipag-gateway-cartaoduplo.php:564
+#: classes/ipag-gateway-cartaoduplo.php:567
+#: classes/ipag-gateway-cartaoduplo.php:570
+#: classes/ipag-gateway-cartaoduplo.php:573
+#: classes/ipag-gateway-cartaoduplo.php:576
+#: classes/ipag-gateway-cartaoduplo.php:579
+#: classes/ipag-gateway-cartaoduplo.php:582
+#: classes/ipag-gateway-cartaoduplo.php:585
+#: classes/ipag-gateway-cartaoduplo.php:718
+#: classes/ipag-gateway-credito.php:465 classes/ipag-gateway-credito.php:582
+#: classes/ipag-gateway-credito.php:585 classes/ipag-gateway-credito.php:588
+#: classes/ipag-gateway-credito.php:591 classes/ipag-gateway-credito.php:594
+#: classes/ipag-gateway-credito.php:597 classes/ipag-gateway-credito.php:600
+#: classes/ipag-gateway-credito.php:682 classes/ipag-gateway-credito.php:726
+#: classes/ipag-gateway-debito.php:289 classes/ipag-gateway-debito.php:292
+#: classes/ipag-gateway-debito.php:295 classes/ipag-gateway-debito.php:298
+#: classes/ipag-gateway-debito.php:402 classes/ipag-gateway-debito.php:445
+#: classes/ipag-gateway-itaushopline.php:284 classes/ipag-gateway-pix.php:338
+msgid "Payment error:"
+msgstr "Erro no Pagamento:"
+
+#: classes/ipag-gateway-boleto.php:360 classes/ipag-gateway-cartaoduplo.php:254
+#: classes/ipag-gateway-cartaoduplo.php:606
+#: classes/ipag-gateway-credito.php:294 classes/ipag-gateway-credito.php:321
+#: classes/ipag-gateway-debito.php:137 classes/ipag-gateway-debito.php:161
+#: classes/ipag-gateway-pix.php:274
+msgid "Invalid credit card number."
+msgstr "Número do Cartão de Crédito inválido."
+
+#: classes/ipag-gateway-boleto.php:361 classes/ipag-gateway-cartaoduplo.php:255
+#: classes/ipag-gateway-cartaoduplo.php:607
+#: classes/ipag-gateway-credito.php:295 classes/ipag-gateway-credito.php:322
+#: classes/ipag-gateway-debito.php:138 classes/ipag-gateway-debito.php:162
+#: classes/ipag-gateway-pix.php:275
+msgid "Invalid CVV."
+msgstr "CVV inválido."
+
+#: classes/ipag-gateway-boleto.php:362 classes/ipag-gateway-cartaoduplo.php:256
+#: classes/ipag-gateway-cartaoduplo.php:608
+#: classes/ipag-gateway-credito.php:296 classes/ipag-gateway-credito.php:323
+#: classes/ipag-gateway-debito.php:139 classes/ipag-gateway-debito.php:163
+#: classes/ipag-gateway-pix.php:276
+msgid "Invalid name."
+msgstr "Titular do cartão inválido."
+
+#: classes/ipag-gateway-boleto.php:363 classes/ipag-gateway-cartaoduplo.php:257
+#: classes/ipag-gateway-cartaoduplo.php:609
+#: classes/ipag-gateway-credito.php:297 classes/ipag-gateway-credito.php:324
+#: classes/ipag-gateway-debito.php:140 classes/ipag-gateway-debito.php:164
+#: classes/ipag-gateway-pix.php:277
+msgid "Invalid expiry date."
+msgstr "Validade do cartão inválida."
+
+#: classes/ipag-gateway-boleto.php:364 classes/ipag-gateway-cartaoduplo.php:258
+#: classes/ipag-gateway-cartaoduplo.php:610
+#: classes/ipag-gateway-credito.php:298 classes/ipag-gateway-credito.php:325
+#: classes/ipag-gateway-debito.php:141 classes/ipag-gateway-debito.php:165
+#: classes/ipag-gateway-pix.php:278
+msgid "Expired card."
+msgstr "Cartão expirado."
+
+#: classes/ipag-gateway-boleto.php:365 classes/ipag-gateway-cartaoduplo.php:259
+#: classes/ipag-gateway-cartaoduplo.php:611
+#: classes/ipag-gateway-credito.php:299 classes/ipag-gateway-credito.php:326
+#: classes/ipag-gateway-debito.php:166 classes/ipag-gateway-pix.php:279
+msgid "Invalid CPF."
+msgstr "CPF do portador do cartão inválido."
+
+#: classes/ipag-gateway-boleto.php:366 classes/ipag-gateway-cartaoduplo.php:260
+#: classes/ipag-gateway-cartaoduplo.php:612
+#: classes/ipag-gateway-credito.php:300 classes/ipag-gateway-credito.php:327
+#: classes/ipag-gateway-debito.php:167 classes/ipag-gateway-pix.php:280
+msgid "Please choose an installment option."
+msgstr "Por favor, escolha uma opção de parcelamento."
+
+#: classes/ipag-gateway-boleto.php:423 classes/ipag-gateway-cartaoduplo.php:717
+#: classes/ipag-gateway-credito.php:725 classes/ipag-gateway-debito.php:444
+#: classes/ipag-gateway-itaushopline.php:283
+msgid " Error processing payment. Check card data!"
+msgstr " Erro ao processar pagamento. Verifique os dados do cartão!"
+
+#: classes/ipag-gateway-boleto.php:425 classes/ipag-gateway-cartaoduplo.php:719
+#: classes/ipag-gateway-credito.php:727 classes/ipag-gateway-debito.php:446
+#: classes/ipag-gateway-itaushopline.php:285
+msgid "Invalid card data"
+msgstr "Dados de cartão inválido"
+
+#: classes/ipag-gateway-cartaoduplo.php:11
+#: classes/ipag-gateway-cartaoduplo.php:65
+msgid "iPag - Double Card"
+msgstr "iPag - Cartão Duplo"
+
+#: classes/ipag-gateway-cartaoduplo.php:83 classes/ipag-gateway-credito.php:83
+#: classes/ipag-gateway-debito.php:67
+msgid "Accepted Card Brands"
+msgstr "Bandeiras Aceitas"
+
+#: classes/ipag-gateway-cartaoduplo.php:85 classes/ipag-gateway-credito.php:85
+#: classes/ipag-gateway-debito.php:69
+msgid "Select the card brands that will be accepted for payment."
+msgstr "Selecione as bandeiras que serão aceitas para pagamento."
+
+#: classes/ipag-gateway-cartaoduplo.php:102
+#: classes/ipag-gateway-credito.php:102
+msgid "Smallest Installment"
+msgstr "Parcela mínima"
+
+#: classes/ipag-gateway-cartaoduplo.php:104
+#: classes/ipag-gateway-credito.php:104
+msgid "Smallest value of each installment."
+msgstr "O menor valor permitido de cada parcela."
+
+#: classes/ipag-gateway-cartaoduplo.php:109
+#: classes/ipag-gateway-credito.php:109
+msgid "Installment Within"
+msgstr "Parcelar em Até"
+
+#: classes/ipag-gateway-cartaoduplo.php:111
+#: classes/ipag-gateway-credito.php:111
+msgid "Maximum number of installments for orders in your store."
+msgstr "Número máximo de parcelas que a sua loja irá aceitar."
+
+#: classes/ipag-gateway-cartaoduplo.php:131
+#: classes/ipag-gateway-credito.php:131
+msgid "Interest Rate(%)"
+msgstr "Taxa de juros (%)"
+
+#: classes/ipag-gateway-cartaoduplo.php:133
+#: classes/ipag-gateway-credito.php:133
+msgid ""
+"Percentage of interest that will be charged to the customer in the "
+"installment."
+msgstr "Porcentagem de juros cobrado do cliente em compras parceladas."
+
+#: classes/ipag-gateway-cartaoduplo.php:138
+#: classes/ipag-gateway-credito.php:138
+msgid "Interest-Free Installment"
+msgstr "Parcelas sem Juros"
+
+#: classes/ipag-gateway-cartaoduplo.php:140
+#: classes/ipag-gateway-credito.php:140
+msgid "Number of interest-free installments"
+msgstr "Número de Parcelas sem Juros"
+
+#: classes/ipag-gateway-cartaoduplo.php:177
+#: classes/ipag-gateway-credito.php:184
+msgid "Status Aprovado"
+msgstr "Status Aprovado"
+
+#: classes/ipag-gateway-cartaoduplo.php:180
+#: classes/ipag-gateway-credito.php:187
+msgid ""
+"O pedido mudará automaticamente para este status em caso de aprovação no iPag"
+msgstr ""
+"O pedido mudará automaticamente para este status em caso de aprovação no iPag"
+
+#: classes/ipag-gateway-cartaoduplo.php:185
+#: classes/ipag-gateway-credito.php:192
+msgid "Status Reprovado"
+msgstr "Status Reprovado"
+
+#: classes/ipag-gateway-cartaoduplo.php:188
+#: classes/ipag-gateway-credito.php:195
+msgid ""
+"O pedido mudará automaticamente para este status em caso de reprova no iPag"
+msgstr ""
+"O pedido mudará automaticamente para este status em caso de reprova no iPag"
+
+#: classes/ipag-gateway-cartaoduplo.php:193
+#: classes/ipag-gateway-credito.php:200
+msgid "Status Capturado"
+msgstr "Status Capturado"
+
+#: classes/ipag-gateway-cartaoduplo.php:196
+#: classes/ipag-gateway-credito.php:203
+msgid ""
+"O pedido mudará automaticamente para este status quando a transação for "
+"capturada no iPag"
+msgstr ""
+"O pedido mudará automaticamente para este status quando a transação for "
+"capturada no iPag"
+
+#: classes/ipag-gateway-cartaoduplo.php:201
+#: classes/ipag-gateway-credito.php:208
+msgid "Status Cancelado"
+msgstr "Status Cancelado"
+
+#: classes/ipag-gateway-cartaoduplo.php:204
+#: classes/ipag-gateway-credito.php:211
+msgid ""
+"O pedido mudará automaticamente para este status quando a transação for "
+"cancelada no iPag"
+msgstr ""
+"O pedido mudará automaticamente para este status quando a transação for "
+"cancelada no iPag"
+
+#: classes/ipag-gateway-cartaoduplo.php:539
+msgid " Invalid credit card one. Please choose another one!"
+msgstr " Primeiro cartão de crédito inválido. Por favor, escolha outro!"
+
+#: classes/ipag-gateway-cartaoduplo.php:542
+msgid " Invalid credit card two. Please choose another one!"
+msgstr " Segundo cartão de crédito inválido. Por favor, escolha outro!"
+
+#: classes/ipag-gateway-cartaoduplo.php:545
+msgid " Preencha o nome do primeiro cartão!"
+msgstr " Preencha o nome do primeiro cartão!"
+
+#: classes/ipag-gateway-cartaoduplo.php:548
+msgid " Preencha o nome do segundo cartão!"
+msgstr " Preencha o nome do segundo cartão!"
+
+#: classes/ipag-gateway-cartaoduplo.php:551
+msgid " Preencha o CVV do primeiro cartão corretamente!"
+msgstr " Preencha o CVV do primeiro cartão corretamente!"
+
+#: classes/ipag-gateway-cartaoduplo.php:554
+msgid " Preencha o CVV do segundo cartão corretamente!"
+msgstr " Preencha o CVV do segundo cartão corretamente!"
+
+#: classes/ipag-gateway-cartaoduplo.php:557
+msgid " Os valores informados não correspondem ao total!"
+msgstr " Os valores informados não correspondem ao total!"
+
+#: classes/ipag-gateway-cartaoduplo.php:560
+msgid " O cartão 1 deve ter entre 13 e 19 dígitos."
+msgstr " O cartão 1 deve ter entre 13 e 19 dígitos."
+
+#: classes/ipag-gateway-cartaoduplo.php:563
+msgid " O cartão 2 deve ter entre 13 e 19 dígitos."
+msgstr " O cartão 2 deve ter entre 13 e 19 dígitos."
+
+#: classes/ipag-gateway-cartaoduplo.php:566
+msgid " O valor do cartão 1 não pode ser inferior à  R$ 0,50 "
+msgstr " O valor do cartão 1 não pode ser inferior à  R$ 0,50 "
+
+#: classes/ipag-gateway-cartaoduplo.php:569
+msgid " O valor do cartão 2 não pode ser inferior à  R$ 0,50 "
+msgstr " O valor do cartão 2 não pode ser inferior à  R$ 0,50 "
+
+#: classes/ipag-gateway-cartaoduplo.php:572
+msgid " Você deve selecionar o número de parcelas no cartão 1 "
+msgstr " Você deve selecionar o número de parcelas no cartão 1 "
+
+#: classes/ipag-gateway-cartaoduplo.php:575
+msgid " Você deve selecionar o número de parcelas no cartão 2"
+msgstr " Você deve selecionar o número de parcelas no cartão 2"
+
+#: classes/ipag-gateway-cartaoduplo.php:578
+msgid " Validade do cartão 1 expirada!"
+msgstr " Validade do cartão 1 expirada!"
+
+#: classes/ipag-gateway-cartaoduplo.php:581
+msgid " Validade do cartão 2 expirada!"
+msgstr " Validade do cartão 2 expirada!"
+
+#: classes/ipag-gateway-cartaoduplo.php:584
+#: classes/ipag-gateway-credito.php:599 classes/ipag-gateway-debito.php:297
+msgid " This card isn't accepted. Please choose another one!"
+msgstr " Este cartão não é aceito pela loja. Por favor escolha outro cartão!"
+
+#: classes/ipag-gateway-cartaoduplo.php:851
+#: classes/ipag-gateway-cartaoduplo.php:876
+#: classes/ipag-gateway-credito.php:922
+msgid "Capturing..."
+msgstr "Capturando ..."
+
+#: classes/ipag-gateway-cartaoduplo.php:867
+#: classes/ipag-gateway-cartaoduplo.php:892
+#: classes/ipag-gateway-credito.php:937
+msgid "Captured"
+msgstr "Capturado"
+
+#: classes/ipag-gateway-cartaoduplo.php:942
+msgid "iPag Payment Gateway - Double Card"
+msgstr "Método de Pagamento iPag - Cartão Duplo"
+
+#: classes/ipag-gateway-credito.php:11 classes/ipag-gateway-credito.php:65
+msgid "iPag - Credit Card"
+msgstr "iPag - Cartão de crédito"
+
+#: classes/ipag-gateway-credito.php:177
+msgid "Enable iPag Brand"
+msgstr "Ativar marca iPag no checkout"
+
+#: classes/ipag-gateway-credito.php:464
+msgid " Não foi possível processar o cartão. Verifique os dados do cartão!"
+msgstr " Não foi possível processar o cartão. Verifique os dados do cartão!"
+
+#: classes/ipag-gateway-credito.php:581 classes/ipag-gateway-debito.php:288
+msgid " Invalid credit card. Please choose another one!"
+msgstr " Cartão de crédito inválido. Por favor, escolha outro!"
+
+#: classes/ipag-gateway-credito.php:584
+msgid " Validade do cartão expirada! "
+msgstr " Validade do cartão expirada! "
+
+#: classes/ipag-gateway-credito.php:587
+msgid " Preencha o número do cartão !"
+msgstr " Preencha o número do cartão !"
+
+#: classes/ipag-gateway-credito.php:590 classes/ipag-gateway-debito.php:291
+msgid " Preencha o nome do cartão!"
+msgstr " Preencha o nome do cartão!"
+
+#: classes/ipag-gateway-credito.php:593 classes/ipag-gateway-debito.php:294
+msgid " Preencha o CVV do cartão corretamente!"
+msgstr " Preencha o CVV do cartão corretamente!"
+
+#: classes/ipag-gateway-credito.php:596
+msgid " Validade do cartão expirada!"
+msgstr " Validade do cartão expirada!"
+
+#: classes/ipag-gateway-credito.php:748
+msgid "Somente é possível realizar reembolso do valor total do pedido."
+msgstr "Somente é possível realizar reembolso do valor total do pedido."
+
+#: classes/ipag-gateway-credito.php:905
+msgid "iPag Payment Gateway - Credit Card"
+msgstr "Método de Pagamento iPag - Cartão de Crédito"
+
+#: classes/ipag-gateway-debito.php:11 classes/ipag-gateway-debito.php:49
+msgid "iPag - Debit Card"
+msgstr "iPag - Cartão de Débito"
+
+#: classes/ipag-gateway-debito.php:100
+msgid "iPag Payment Gateway - Debit Card"
+msgstr "IPag - Cartão de Débito"
+
+#: classes/ipag-gateway-itaushopline.php:11
+#: classes/ipag-gateway-itaushopline.php:50
+msgid "iPag - Itaú Shopline"
+msgstr "iPag - Itaú Shopline"
+
+#: classes/ipag-gateway-itaushopline.php:77
+msgid "This controls the message that users will see before Itaú redirect."
+msgstr ""
+"Isto controla a mensagem que os usuários verão antes do redirecionamento "
+"para o Itaú."
+
+#: classes/ipag-gateway-itaushopline.php:78
+msgid "Confirm your order to redirect to the bank."
+msgstr "Confirme seu pedido para redirecionar ao Itaú."
+
+#: classes/ipag-gateway-itaushopline.php:114
+msgid "iPag Payment Gateway - Itaú Shopline"
+msgstr "Método de Pagamento iPag - Itaú Shopline"
+
+#: classes/ipag-gateway-itaushopline.php:130
+#: classes/ipag-gateway-itaushopline.php:308
+msgid "Exibir cobrança"
+msgstr "Exibir cobrança"
+
+#: classes/ipag-gateway-itaushopline.php:131
+#: classes/ipag-gateway-itaushopline.php:310
+msgid "Clique no link ao lado para efetuar o pagamento."
+msgstr "Clique no link ao lado para efetuar o pagamento."
+
+#: classes/ipag-gateway-pix.php:18 classes/ipag-gateway-pix.php:59
+msgid "iPag - Pix"
+msgstr "iPag - Pix"
+
+#: classes/ipag-gateway-pix.php:79
+msgid "This controls the message that users will see before view the qrcode."
+msgstr ""
+"Esta opção define a mensagem que os usuários verão antes de visualizar o "
+"QRCode."
+
+#: classes/ipag-gateway-pix.php:80
+msgid "Confirm your order to view the qrcode."
+msgstr "Confirme seu pedido para visualizar o QR Code."
+
+#: classes/ipag-gateway-pix.php:116
+msgid "iPag Payment Gateway - Pix"
+msgstr "Método de Pagamento iPag - Pix"
+
+#: classes/ipag-gateway-pix.php:169
+msgid ""
+"Clique no link ao lado para visualizar o QRCode ou escaneie a imagem acima."
+msgstr ""
+"Clique no link ao lado para visualizar o QRCode ou escaneie a imagem acima."
+
+#: classes/ipag-gateway-pix.php:337
+msgid " Error processing payment."
+msgstr " Erro ao processar pagamento."
+
+#: classes/ipag-gateway-pix.php:339
+msgid "Invalid payment data."
+msgstr "Dados de pagamento inválidos."
+
+#: classes/ipag-gateway-pix.php:364
+msgid "Clique no link ao lado para visualizar o QRCode."
+msgstr "Clique no link ao lado para visualizar o QRCode."
+
+#: ipag-gateway.php:120
+msgid "Credit Settings"
+msgstr "Config. Crédito"
+
+#: ipag-gateway.php:122
+msgid "Billet Settings"
+msgstr "Config. Boleto"
+
+#: ipag-gateway.php:124
+msgid "Pix Settings"
+msgstr "Config. Pix"
+
+#: ipag-gateway.php:126
+msgid "Itaú Shopline Settings"
+msgstr "Config. Itaú Shopline"
+
+#: ipag-gateway.php:128
+msgid "Debit Settings"
+msgstr "Config. Débito"
+
+#: ipag-gateway.php:130
+msgid "Double Card Settings"
+msgstr "Config. Cartão Duplo"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:82
+#: templates/ipag-gateway-template-cartaoduplo.php:146
+msgid "Valor"
+msgstr "Valor"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:87
+#: templates/ipag-gateway-template-cartaoduplo.php:151
+#: templates/ipag-gateway-template-credito.php:180
+#: templates/ipag-gateway-template-debito.php:53
+msgid "Número do Cartão"
+msgstr "Número do Cartão"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:97
+#: templates/ipag-gateway-template-cartaoduplo.php:161
+#: templates/ipag-gateway-template-credito.php:190
+#: templates/ipag-gateway-template-debito.php:63
+msgid "Titular do Cartão"
+msgstr "Titular do Cartão"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:101
+#: templates/ipag-gateway-template-cartaoduplo.php:165
+#: templates/ipag-gateway-template-credito.php:194
+#: templates/ipag-gateway-template-debito.php:67
+msgid "Validade do Cartão (Formato MM/AA)"
+msgstr "Validade do Cartão (Formato MM/AA)"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:102
+#: templates/ipag-gateway-template-cartaoduplo.php:166
+#: templates/ipag-gateway-template-credito.php:195
+#: templates/ipag-gateway-template-debito.php:68
+msgid "MM / AA"
+msgstr "MM / AA"
+
+#: templates/ipag-gateway-template-cartaoduplo.php:106
+#: templates/ipag-gateway-template-cartaoduplo.php:170
+#: templates/ipag-gateway-template-credito.php:200
+#: templates/ipag-gateway-template-debito.php:72
+msgid "CVV"
+msgstr "CVV"
+
+#: templates/ipag-gateway-template-credito.php:220
+msgid "CPF do portador do cartão"
+msgstr "CPF do portador do cartão"
+
+#~ msgid "Payment error Card 1:"
+#~ msgstr "Erro no Pagamento Cartão 1:"
+
+#~ msgid "Payment error Card 2:"
+#~ msgstr "Erro no Pagamento Cartão 2:"
+
+#, fuzzy
+#~| msgid "iPag - Double Card"
+#~ msgid "iPag - Double Cards"
+#~ msgstr "iPag - Cartão Duplo"
+
+#~ msgid "Print Billet"
+#~ msgstr "Imprimir Boleto"
+
+#~ msgid "Open Itaú Shopline"
+#~ msgstr "Abrir Itaú Shopline"
+
+#~ msgid "Card Holder Name"
+#~ msgstr "Nome do titular de cartão"
+
+#~ msgid "Credit Card Expiration Date"
+#~ msgstr "Validade do Cartão de Crédito"
+
+#~ msgid "Leave this for the developers ;)"
+#~ msgstr "Deixe isto para os desenvolvedores ;)"
+
+#~ msgid "Let this for the developers ;)"
+#~ msgstr "Deixe isso para os desenvolvedores :)"
+
+#~ msgid "iPag Billet"
+#~ msgstr "iPag  - Boleto"
+
+#~ msgid "iPag Credit Card"
+#~ msgstr "iPag Cartão de crédito"
+
+#~ msgid ""
+#~ "Quantity of days that your client has to pay the billet. Don't forget to "
+#~ "change Hold Stock Time configuration in Woocommerce>Products>Inventory "
+#~ "according this time."
+#~ msgstr ""
+#~ "Quantidade de dias que o cliente tem para pagar o boleto. Não se esqueça "
+#~ "de alterar a configuração de \"Hold Stock\"em WooCommerce&gt; "
+#~ "Products&gt; Inventory de acordo com este tempo."
+
+#~ msgid "iPag Payment Gateway"
+#~ msgstr "Método de Pagamento iPag"
+
+#~ msgid "This controls the title which the user see during checkout."
+#~ msgstr ""
+#~ "Isto controla o título que o usuário vê durante a finalização da compra."
+
+#~ msgid "Awaiting cheque payment"
+#~ msgstr "À espera do pagamento do cheque"
+
+#~ msgid "Select the card brands that will be accepted as payment."
+#~ msgstr "Selecione as bandeiras que serão aceitas para pagamento."

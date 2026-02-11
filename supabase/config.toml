@@ -1,0 +1,4 @@
+project_id = "rrgrkbjmoezpesqnjilk"
+
+[functions.ipag-webhook]
+verify_jwt = false

@@ -1,0 +1,247 @@
+RESUMO COMPLETO PARA CLAUDE CODE - CHECKOUT iPAG
+
+=================================================================
+CONTEXTO GERAL
+=================================================================
+
+Estamos integrando pagamentos iPag no e-commerce. Os pagamentos SAO APROVADOS no iPag mas o site NAO recebe a confirmação corretamente. Temos 2 métodos de pagamento: PIX e CARTAO DE CREDITO.
+
+PROBLEMA PRINCIPAL: Depois que o cliente paga, o dinheiro sai da conta dele, o iPag confirma o pagamento, mas o site fica travado sem atualizar o status do pedido.
+
+=================================================================
+HISTORICO DETALHADO DAS TENTATIVAS
+=================================================================
+
+FASE 1 - PROBLEMAS INICIAIS (INICIO DA CONVERSA)
+
+Cartão de Crédito:
+- Erro: Dados incorretos do cartão
+- Problema: Estávamos enviando campo validade (MM/YYYY)
+- Descoberta: Plugin oficial WooCommerce do iPag usa mes_cartao e ano_cartao separados
+- Solucao aplicada: Ajustamos campos para mes_cartao, ano_cartao, nome_cartao
+- Resultado: Pagamento passou a ser APROVADO no iPag
+
+PIX:
+- Erro: Loading infinito, status não atualiza
+- Problema 1: Usavamos callback_url mas iPag espera url_retorno
+- Problema 2: Webhook tratava status 3 como sucesso (é cancelado)
+- Problema 3: Status corretos de sucesso sao 5 e 8 (estavam sendo ignorados)
+- Solucao aplicada: Corrigimos url_retorno e mapeamento de status no webhook
+- Resultado: Ainda NAO funciona
+
+FASE 2 - IMPLEMENTACAO DE SEGURANCA (TENTATIVA DE RESOLVER)
+
+Sistema de 3 camadas implementado:
+1. Webhook (push do iPag)
+2. Polling no checkout (verifica a cada 5 segundos)
+3. Auto-sync no histórico de pedidos (verifica ao abrir página)
+
+Resultado: NENHUMA das 3 camadas esta funcionando corretamente
+
+FASE 3 - TESTES REAIS (SITUACAO ATUAL)
+
+TESTE 1 - PIX:
+- Data/Hora: 01/02/2026, 21:38:15
+- Transacao iPag: 10842871
+- TID: 40492602012135291550
+- Status no iPag: CAPTURADO (21:38:52)
+- Status no site: PENDENTE (nunca mudou)
+- Problema: Site continua em loading infinito
+
+TESTE 2 - CARTAO DE CREDITO:
+- Data/Hora: 01/02/2026, 21:58:12
+- Transacao iPag: 10842908
+- NSU: 253626449
+- TID: 11182602012150499024
+- Status no iPag: CAPTURADO (21:58:14)
+- Status no site: PENDENTE
+- Problema específico: Erro JavaScript "Can't find variable: clearCart"
+- Consequencia: Site travou na tela do carrinho, nao limpou carrinho, nao redirecionou
+
+FASE 4 - TENTATIVA DE CORRECAO DO clearCart
+
+- Foi aplicada correcao no código do Checkout
+- Cliente pediu para recarregar página (F5)
+- Resultado: FALHOU, histórico de pedidos nao atualizou
+- Página "meus pedidos" nao carrega corretamente
+
+=================================================================
+PROBLEMAS TECNICOS DETALHADOS
+=================================================================
+
+PROBLEMA 1: CARTAO DE CREDITO - FLUXO POS-PAGAMENTO QUEBRADO
+
+Fluxo esperado:
+1. Cliente preenche dados do cartao
+2. Site envia para iPag
+3. iPag aprova e retorna sucesso
+4. Site recebe confirmacao
+5. Site limpa carrinho (clearCart)
+6. Site redireciona para página de confirmacao
+7. Status do pedido muda para Pago
+
+Fluxo atual:
+1. Cliente preenche dados do cartao - OK
+2. Site envia para iPag - OK
+3. iPag aprova e retorna sucesso - OK
+4. Site recebe confirmacao - OK
+5. Site tenta executar clearCart - ERRO (variável nao existe)
+6. TRAVOU AQUI - nao limpa carrinho, nao redireciona
+7. Status fica Pendente para sempre
+
+Erro exato no console:
+Can't find variable: clearCart
+
+Arquivos envolvidos:
+- Componente Checkout (onde clearCart deveria ser chamado)
+- process-payment (funcao que processa cartao)
+- Algum arquivo que deveria definir clearCart mas nao define
+
+PROBLEMA 2: PIX - WEBHOOK NAO ATUALIZA BANCO DE DADOS
+
+Fluxo esperado:
+1. Cliente clica em Pix
+2. Site gera QR Code via iPag
+3. Cliente paga pelo app do banco
+4. iPag detecta pagamento
+5. iPag envia webhook para nosso site (url_retorno)
+6. Nosso webhook recebe notificacao
+7. Webhook atualiza status no banco para Pago
+8. Polling no checkout detecta mudanca
+9. Checkout redireciona para confirmacao
+
+Fluxo atual:
+1. Cliente clica em Pix - OK
+2. Site gera QR Code via iPag - OK
+3. Cliente paga pelo app do banco - OK
+4. iPag detecta pagamento - OK
+5. iPag envia webhook para nosso site - PROVAVEL
+6. Nosso webhook recebe (TALVEZ) - NAO SABEMOS SE ESTA CHEGANDO
+7. Webhook NAO atualiza banco - FALHA CRITICA
+8. Polling continua verificando eternamente - INUTIL se banco nao atualiza
+9. Cliente fica vendo loading infinito - EXPERIENCIA HORRIVEL
+
+Possiveis causas:
+- Webhook nao esta sendo chamado pelo iPag (URL errada?)
+- Webhook é chamado mas retorna erro (validacao, autenticacao?)
+- Webhook roda mas nao atualiza banco (query SQL errada?)
+- Webhook atualiza tabela errada ou campo errado
+
+PROBLEMA 3: HISTORICO DE PEDIDOS - AUTO-SYNC NAO FUNCIONA
+
+Objetivo do auto-sync:
+Mesmo se webhook falhar, quando cliente abre página meus pedidos, o sistema deveria:
+1. Pegar lista de pedidos Pendentes
+2. Para cada pedido, consultar API do iPag
+3. Verificar status real no iPag
+4. Atualizar banco de dados
+5. Mostrar status correto na tela
+
+Situacao atual:
+1. Página meus pedidos nao carrega direito
+2. Auto-sync nao esta rodando OU nao esta atualizando banco
+3. Pedidos ficam Pendentes mesmo estando Pagos no iPag ha 30+ minutos
+
+=================================================================
+ARQUIVOS E REFERENCIAS
+=================================================================
+
+Plugin oficial iPag para WooCommerce:
+- Localizacao: pasta ipag-woocommerce
+- Use para comparar: campos de envio, tratamento de webhook, mapeamento de status
+- E a referencia OFICIAL de como implementar corretamente
+
+Arquivos do nosso projeto (precisam correcao):
+- process-payment: funcao que processa pagamento cartao de credito
+- Webhook handler: recebe notificacoes do iPag (PIX e cartao)
+- Componente Checkout: tela onde cliente finaliza compra (tem erro clearCart)
+- Pagina meus pedidos: histórico com auto-sync (nao funciona)
+
+=================================================================
+O QUE PRECISA SER CORRIGIDO (PRIORIDADE)
+=================================================================
+
+URGENTE 1 - Corrigir erro clearCart no cartao
+- Definir funcao clearCart corretamente
+- Garantir que apos pagamento aprovado: limpa carrinho, redireciona, atualiza status
+- Testar fluxo completo de pagamento com cartao
+
+URGENTE 2 - Fazer webhook PIX funcionar
+- Verificar se webhook esta sendo chamado (logs do servidor?)
+- Verificar se URL esta correta no iPag
+- Garantir que webhook REALMENTE atualiza banco de dados
+- Adicionar logs para debugar o que esta acontecendo
+- Testar com transacao real
+
+URGENTE 3 - Implementar auto-sync funcional
+- Fazer página meus pedidos carregar corretamente
+- Implementar consulta a API do iPag
+- Atualizar status no banco quando encontrar divergencia
+- Adicionar botao manual de sincronizar como fallback
+
+IMPORTANTE 4 - Sistema de logs e debugging
+- Adicionar logs em cada etapa do processo
+- Webhook: log quando recebe chamada, log do body recebido, log se atualizou banco
+- Checkout: log apos envio para iPag, log da resposta recebida
+- Auto-sync: log de quantos pedidos verificou, log de quais atualizou
+
+IMPORTANTE 5 - Testes end-to-end
+Depois de corrigir, testar:
+1. Pagamento PIX: pagar e ver se atualiza automatico em 5-10 segundos
+2. Pagamento Cartao: ver se limpa carrinho e redireciona
+3. Historico: abrir página e ver se sincroniza pedidos antigos
+4. Webhook: forcar chamada manual para testar se atualiza
+
+=================================================================
+TRANSACOES PARA USAR NOS TESTES
+=================================================================
+
+Use estas transacoes reais para testar sincronizacao:
+
+PIX - Transacao 10842871
+- Numero pedido: fb1b67bd-c5b7-4f
+- Data transacao: 01/02/2026, 21:38:15
+- Data captura: 01/02/2026, 21:38:52
+- TID: 40492602012135291550
+- Status iPag: CAPTURADO
+- Status site: PENDENTE (errado)
+
+CARTAO - Transacao 10842908
+- Numero pedido: 9c5b4031-7183-4b
+- Data transacao: 01/02/2026, 21:58:12
+- Data captura: 01/02/2026, 21:58:14
+- TID: 11182602012150499024
+- NSU: 253626449
+- Status iPag: CAPTURADO
+- Status site: PENDENTE (errado)
+
+Use API do iPag para consultar essas transacoes e comparar com banco de dados.
+
+=================================================================
+RESUMO EXECUTIVO
+=================================================================
+
+O QUE ESTA FUNCIONANDO:
+- Integracao com iPag (envia pagamento)
+- iPag processa e aprova pagamentos
+- Cliente consegue pagar
+
+O QUE NAO ESTA FUNCIONANDO:
+- Site nao recebe confirmacao de pagamento
+- Webhook nao atualiza banco de dados
+- Checkout trava com erro clearCart
+- Historico de pedidos nao sincroniza
+- Cliente fica sem confirmacao de compra
+
+IMPACTO NO NEGOCIO:
+- Cliente paga mas nao recebe confirmacao
+- Pedidos ficam como Pendentes eternamente
+- Precisa verificar manualmente no iPag
+- Experiencia do cliente pessima
+- Risco de cliente pagar 2x pensando que nao funcionou
+
+OBJETIVO FINAL:
+Fazer o fluxo completo funcionar:
+Cliente paga > iPag confirma > Site recebe confirmacao > Status atualiza > Cliente ve confirmacao
+
+ATENCAO: Os pagamentos ESTAO SENDO PROCESSADOS. O dinheiro esta saindo das contas. O problema e APENAS a comunicacao iPag para Site e atualizacao da interface.

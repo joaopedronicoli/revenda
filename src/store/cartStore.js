@@ -41,10 +41,9 @@ const trackCartActivity = async (cart, getSummary) => {
 
             // Upsert cart activity via API
             await api.post('/abandoned-carts', {
-                cart_data: { items: cart },
+                items: cart,
                 total: summary.totalWithDiscount,
-                item_count: summary.itemCount,
-                status: 'active'
+                item_count: summary.itemCount
             })
         } catch (err) {
             // Silently fail - this is not critical

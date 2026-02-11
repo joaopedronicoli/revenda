@@ -9,16 +9,41 @@ const statusConfig = {
 }
 
 const formatCurrency = (value) => {
+    const num = parseFloat(value)
+    if (isNaN(num)) return 'R$ 0,00'
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL'
-    }).format(value)
+    }).format(num)
+}
+
+// Calculate total from items array if total field is missing/NaN
+const calculateCartTotal = (cart) => {
+    const total = parseFloat(cart.total)
+    if (!isNaN(total) && total > 0) return total
+
+    // Fallback: calculate from items
+    const items = parseCartItems(cart)
+    return items.reduce((sum, item) => {
+        const price = parseFloat(item.tablePrice || item.price || 0)
+        const qty = parseInt(item.quantity) || 1
+        return sum + (price * qty)
+    }, 0)
+}
+
+// Parse items from JSONB - handles both string and object
+const parseCartItems = (cart) => {
+    let items = cart.items
+    if (typeof items === 'string') {
+        try { items = JSON.parse(items) } catch { items = [] }
+    }
+    return Array.isArray(items) ? items : []
 }
 
 export default function AbandonedCarts() {
     const [carts, setCarts] = useState([])
     const [loading, setLoading] = useState(true)
-    const [filter, setFilter] = useState('abandoned')
+    const [filter, setFilter] = useState('all')
     const [search, setSearch] = useState('')
     const [selectedCart, setSelectedCart] = useState(null)
     const [sending, setSending] = useState(false)
@@ -54,11 +79,16 @@ export default function AbandonedCarts() {
                 recovery_link: `${window.location.origin}/?recover=${cart.id}`
             })
 
-            alert(`Recuperação via ${type} enviada!`)
-            loadCarts()
+            // Update local state to reflect sent status
+            setCarts(prev => prev.map(c => c.id === cartId
+                ? { ...c, [type === 'email' ? 'recovery_email_sent' : 'recovery_whatsapp_sent']: true }
+                : c
+            ))
+
+            alert(`Recuperacao via ${type === 'email' ? 'Email' : 'WhatsApp'} enviada!`)
         } catch (err) {
             console.error('Error triggering recovery:', err)
-            alert('Erro ao enviar recuperação')
+            alert('Erro ao enviar recuperacao')
         } finally {
             setSending(false)
         }
@@ -68,12 +98,12 @@ export default function AbandonedCarts() {
         if (!search) return true
         const searchLower = search.toLowerCase()
         return (
-            cart.user_approvals?.full_name?.toLowerCase().includes(searchLower) ||
-            cart.user_approvals?.email?.toLowerCase().includes(searchLower)
+            cart.user_name?.toLowerCase().includes(searchLower) ||
+            cart.user_email?.toLowerCase().includes(searchLower)
         )
     })
 
-    const totalValue = filteredCarts.reduce((sum, cart) => sum + Number(cart.total || 0), 0)
+    const totalValue = filteredCarts.reduce((sum, cart) => sum + calculateCartTotal(cart), 0)
 
     return (
         <div className="space-y-6">
@@ -82,7 +112,7 @@ export default function AbandonedCarts() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Carrinhos Abandonados</h1>
                     <p className="text-slate-500">
-                        {filteredCarts.length} carrinhos • {formatCurrency(totalValue)} em valor potencial
+                        {filteredCarts.length} carrinhos {totalValue > 0 && `\u2022 ${formatCurrency(totalValue)} em valor potencial`}
                     </p>
                 </div>
                 <button
@@ -145,32 +175,34 @@ export default function AbandonedCarts() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Abandonado em</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Recuperação</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Recuperacao</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
                                 {filteredCarts.map((cart) => {
-                                    const status = statusConfig[cart.status] || statusConfig.abandoned
-                                    const StatusIcon = status.icon
+                                    const cartStatus = statusConfig[cart.status] || statusConfig.abandoned
+                                    const StatusIcon = cartStatus.icon
+                                    const items = parseCartItems(cart)
+                                    const cartTotal = calculateCartTotal(cart)
                                     return (
                                         <tr key={cart.id} className="hover:bg-slate-50">
                                             <td className="px-6 py-4">
                                                 <p className="text-sm font-medium text-slate-900">
-                                                    {cart.user_approvals?.full_name || '-'}
+                                                    {cart.user_name || '-'}
                                                 </p>
                                                 <p className="text-xs text-slate-500">
-                                                    {cart.user_approvals?.email || '-'}
+                                                    {cart.user_email || '-'}
                                                 </p>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-900">
-                                                {cart.item_count} itens
+                                                {cart.item_count || items.length} {(cart.item_count || items.length) === 1 ? 'item' : 'itens'}
                                             </td>
                                             <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                                                {formatCurrency(cart.total)}
+                                                {formatCurrency(cartTotal)}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-500">
-                                                {new Date(cart.created_at).toLocaleDateString('pt-BR', {
+                                                {new Date(cart.updated_at || cart.created_at).toLocaleDateString('pt-BR', {
                                                     day: '2-digit',
                                                     month: '2-digit',
                                                     year: 'numeric',
@@ -179,18 +211,18 @@ export default function AbandonedCarts() {
                                                 })}
                                             </td>
                                             <td className="px-6 py-4">
-                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
+                                                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${cartStatus.color}`}>
                                                     <StatusIcon className="w-3 h-3" />
-                                                    {status.label}
+                                                    {cartStatus.label}
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-2 text-xs">
                                                     <span className={cart.recovery_email_sent ? 'text-green-600' : 'text-slate-400'}>
-                                                        Email {cart.recovery_email_sent ? '✓' : '○'}
+                                                        Email {cart.recovery_email_sent ? '\u2713' : '\u25CB'}
                                                     </span>
                                                     <span className={cart.recovery_whatsapp_sent ? 'text-green-600' : 'text-slate-400'}>
-                                                        WhatsApp {cart.recovery_whatsapp_sent ? '✓' : '○'}
+                                                        WhatsApp {cart.recovery_whatsapp_sent ? '\u2713' : '\u25CB'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -203,12 +235,12 @@ export default function AbandonedCarts() {
                                                     >
                                                         <Eye className="w-4 h-4" />
                                                     </button>
-                                                    {cart.status === 'abandoned' && (
+                                                    {(!cart.status || cart.status === 'abandoned') && (
                                                         <button
                                                             onClick={() => triggerRecovery(cart.id, 'email')}
                                                             disabled={sending || cart.recovery_email_sent}
                                                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                                                            title="Enviar recuperação"
+                                                            title="Enviar recuperacao por email"
                                                         >
                                                             <Send className="w-4 h-4" />
                                                         </button>
@@ -235,9 +267,9 @@ export default function AbandonedCarts() {
                                 </h2>
                                 <button
                                     onClick={() => setSelectedCart(null)}
-                                    className="text-slate-400 hover:text-slate-600"
+                                    className="text-slate-400 hover:text-slate-600 text-xl"
                                 >
-                                    ✕
+                                    &times;
                                 </button>
                             </div>
                         </div>
@@ -247,9 +279,11 @@ export default function AbandonedCarts() {
                             <div>
                                 <h3 className="text-sm font-medium text-slate-500 mb-2">Cliente</h3>
                                 <div className="bg-slate-50 rounded-lg p-4">
-                                    <p className="font-medium">{selectedCart.user_approvals?.full_name}</p>
-                                    <p className="text-sm text-slate-500">{selectedCart.user_approvals?.email}</p>
-                                    <p className="text-sm text-slate-500">{selectedCart.user_approvals?.whatsapp}</p>
+                                    <p className="font-medium">{selectedCart.user_name || '-'}</p>
+                                    <p className="text-sm text-slate-500">{selectedCart.user_email || '-'}</p>
+                                    {selectedCart.telefone && (
+                                        <p className="text-sm text-slate-500">{selectedCart.telefone}</p>
+                                    )}
                                 </div>
                             </div>
 
@@ -257,23 +291,37 @@ export default function AbandonedCarts() {
                             <div>
                                 <h3 className="text-sm font-medium text-slate-500 mb-2">Itens do Carrinho</h3>
                                 <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-                                    {selectedCart.cart_data?.items?.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between text-sm">
-                                            <span>{item.quantity}x {item.name}</span>
-                                            <span className="font-medium">{formatCurrency(item.tablePrice * item.quantity)}</span>
-                                        </div>
-                                    ))}
-                                    <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-medium">
-                                        <span>Total</span>
-                                        <span>{formatCurrency(selectedCart.total)}</span>
-                                    </div>
+                                    {(() => {
+                                        const items = parseCartItems(selectedCart)
+                                        if (items.length === 0) {
+                                            return <p className="text-sm text-slate-400">Nenhum item</p>
+                                        }
+                                        return (
+                                            <>
+                                                {items.map((item, idx) => {
+                                                    const price = parseFloat(item.tablePrice || item.price || 0)
+                                                    const qty = parseInt(item.quantity) || 1
+                                                    return (
+                                                        <div key={idx} className="flex justify-between text-sm">
+                                                            <span>{qty}x {item.name || `Produto #${item.id}`}</span>
+                                                            <span className="font-medium">{formatCurrency(price * qty)}</span>
+                                                        </div>
+                                                    )
+                                                })}
+                                                <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-medium">
+                                                    <span>Total</span>
+                                                    <span>{formatCurrency(calculateCartTotal(selectedCart))}</span>
+                                                </div>
+                                            </>
+                                        )
+                                    })()}
                                 </div>
                             </div>
 
-                            {/* Ações de Recuperação */}
-                            {selectedCart.status === 'abandoned' && (
+                            {/* Acoes de Recuperacao */}
+                            {(!selectedCart.status || selectedCart.status === 'abandoned') && (
                                 <div>
-                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Ações de Recuperação</h3>
+                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Acoes de Recuperacao</h3>
                                     <div className="flex gap-2">
                                         <button
                                             onClick={() => triggerRecovery(selectedCart.id, 'email')}
@@ -293,9 +341,9 @@ export default function AbandonedCarts() {
                                 </div>
                             )}
 
-                            {/* Link de Recuperação */}
+                            {/* Link de Recuperacao */}
                             <div>
-                                <h3 className="text-sm font-medium text-slate-500 mb-2">Link de Recuperação</h3>
+                                <h3 className="text-sm font-medium text-slate-500 mb-2">Link de Recuperacao</h3>
                                 <div className="bg-slate-50 rounded-lg p-4">
                                     <code className="text-sm break-all">
                                         {window.location.origin}/?recover={selectedCart.id}

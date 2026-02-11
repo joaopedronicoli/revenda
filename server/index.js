@@ -1314,7 +1314,11 @@ app.get('/abandoned-carts', authenticateToken, async (req, res) => {
 });
 
 app.post('/abandoned-carts', authenticateToken, async (req, res) => {
-    const { items } = req.body;
+    const { items, cart_data, total, item_count } = req.body;
+    // Support both formats: items directly or cart_data.items
+    const cartItems = items || cart_data?.items || [];
+    const cartTotal = total || 0;
+    const cartItemCount = item_count || cartItems.reduce((sum, i) => sum + (i.quantity || 1), 0);
 
     try {
         const { rows: existing } = await db.query(
@@ -1324,15 +1328,15 @@ app.post('/abandoned-carts', authenticateToken, async (req, res) => {
 
         if (existing.length > 0) {
             const { rows } = await db.query(
-                'UPDATE abandoned_carts SET items = $1, updated_at = NOW() WHERE user_id = $2 RETURNING *',
-                [JSON.stringify(items), req.user.id]
+                `UPDATE abandoned_carts SET items = $1, total = $2, item_count = $3, status = 'abandoned', updated_at = NOW() WHERE user_id = $4 RETURNING *`,
+                [JSON.stringify(cartItems), cartTotal, cartItemCount, req.user.id]
             );
             return res.json(rows[0]);
         }
 
         const { rows } = await db.query(
-            'INSERT INTO abandoned_carts (user_id, items) VALUES ($1, $2) RETURNING *',
-            [req.user.id, JSON.stringify(items)]
+            `INSERT INTO abandoned_carts (user_id, items, total, item_count, status) VALUES ($1, $2, $3, $4, 'abandoned') RETURNING *`,
+            [req.user.id, JSON.stringify(cartItems), cartTotal, cartItemCount]
         );
 
         res.status(201).json(rows[0]);
@@ -1812,11 +1816,29 @@ app.delete('/admin/orders/:id', authenticateToken, requireAdmin, async (req, res
 
 app.get('/admin/abandoned-carts', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query(
-            'SELECT ac.*, u.name as user_name, u.email as user_email, u.telefone FROM abandoned_carts ac JOIN users u ON ac.user_id = u.id ORDER BY ac.updated_at DESC'
-        );
+        const { status } = req.query;
+        let query = 'SELECT ac.*, u.name as user_name, u.email as user_email, u.telefone FROM abandoned_carts ac JOIN users u ON ac.user_id = u.id';
+        const params = [];
+
+        if (status && status !== 'all') {
+            params.push(status);
+            query += ` WHERE ac.status = $1`;
+        }
+
+        query += ' ORDER BY ac.updated_at DESC';
+
+        const { rows } = await db.query(query, params);
         res.json(rows);
     } catch (err) {
+        // Fallback if status column doesn't exist
+        if (err.message && err.message.includes('does not exist')) {
+            try {
+                const { rows } = await db.query(
+                    'SELECT ac.*, u.name as user_name, u.email as user_email, u.telefone FROM abandoned_carts ac JOIN users u ON ac.user_id = u.id ORDER BY ac.updated_at DESC'
+                );
+                return res.json(rows);
+            } catch (e) { /* ignore */ }
+        }
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar carrinhos abandonados' });
     }
@@ -1830,7 +1852,15 @@ app.post('/admin/abandoned-carts/:id/recover', authenticateToken, requireAdmin, 
             [req.params.id]
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Carrinho nao encontrado' });
-        res.json({ message: 'Recuperacao enviada' });
+
+        // Mark recovery type as sent
+        if (type === 'email') {
+            await db.query('UPDATE abandoned_carts SET recovery_email_sent = true, updated_at = NOW() WHERE id = $1', [req.params.id]);
+        } else if (type === 'whatsapp') {
+            await db.query('UPDATE abandoned_carts SET recovery_whatsapp_sent = true, updated_at = NOW() WHERE id = $1', [req.params.id]);
+        }
+
+        res.json({ message: 'Recuperacao enviada', cart: rows[0] });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao recuperar carrinho' });

@@ -132,6 +132,19 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "abandoned_carts" verificada/criada com sucesso.');
 
+    // Colunas extras de abandoned_carts
+    const abandonedCartColumns = [
+      { name: 'total', sql: "ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS total DECIMAL(10,2) DEFAULT 0" },
+      { name: 'item_count', sql: "ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS item_count INTEGER DEFAULT 0" },
+      { name: 'status', sql: "ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'abandoned'" },
+      { name: 'recovery_email_sent', sql: "ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_email_sent BOOLEAN DEFAULT false" },
+      { name: 'recovery_whatsapp_sent', sql: "ALTER TABLE abandoned_carts ADD COLUMN IF NOT EXISTS recovery_whatsapp_sent BOOLEAN DEFAULT false" },
+    ];
+    for (const col of abandonedCartColumns) {
+      try { await db.query(col.sql); } catch (e) { /* already exists */ }
+    }
+    console.log('Colunas extras de "abandoned_carts" verificadas.');
+
     // Configuracoes de webhook
     await db.query(`
       CREATE TABLE IF NOT EXISTS webhook_configurations (

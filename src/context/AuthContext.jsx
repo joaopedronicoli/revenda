@@ -245,15 +245,20 @@ export const AuthProvider = ({ children }) => {
     }
 
     const resetPassword = async (token, newPassword) => {
-        // Tenta revenda primeiro (email reset), fallback para central-pelg
+        // Decodificar payload do JWT para saber qual backend gerou o token
         try {
-            const response = await api.post('/auth/reset-password', { token, newPassword })
-            return response.data
-        } catch (err) {
-            // Fallback: pode ser um token de reset do central-pelg (via whatsapp)
-            const response = await centralApi.post('/auth/reset-password', { token, newPassword })
-            return response.data
+            const payload = JSON.parse(atob(token.split('.')[1]))
+            if (payload.type === 'password-reset') {
+                // Token gerado pela revenda (email) → chamar revenda
+                const response = await api.post('/auth/reset-password', { token, newPassword })
+                return response.data
+            }
+        } catch (e) {
+            // Se falhar decode, tenta central-pelg
         }
+        // Token gerado pelo central-pelg (whatsapp) ou fallback → chamar central-pelg
+        const response = await centralApi.post('/auth/reset-password', { token, newPassword })
+        return response.data
     }
 
     const resendVerificationEmail = async () => {

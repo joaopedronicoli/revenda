@@ -3,6 +3,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const db = require('./db');
 const ipagService = require('./ipagService');
+const woocommerceService = require('./woocommerceService');
 require('dotenv').config();
 
 const app = express();
@@ -853,6 +854,121 @@ app.put('/admin/app-settings', authenticateToken, requireAdmin, async (req, res)
 
 // =============================================
 // WEBHOOKS (External)
+// =============================================
+
+// =============================================
+// WOOCOMMERCE — Proxy para patriciaelias.com.br
+// =============================================
+
+app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        if (!orderId) return res.status(400).json({ error: 'orderId obrigatorio' });
+
+        // Buscar pedido local
+        const { rows } = await db.query(
+            `SELECT o.*, a.street, a.number, a.complement, a.neighborhood, a.city, a.state, a.cep
+             FROM orders o LEFT JOIN addresses a ON o.address_id = a.id
+             WHERE o.id = $1 AND o.user_id = $2`,
+            [orderId, req.user.id]
+        );
+
+        if (rows.length === 0) return res.status(404).json({ error: 'Pedido nao encontrado' });
+        const order = rows[0];
+        const details = order.details || {};
+
+        // Mapear produtos
+        const lineItems = (details.items || [])
+            .filter(item => item.woo_product_id)
+            .map(item => ({
+                product_id: item.woo_product_id,
+                quantity: item.quantity,
+                price: (item.tablePrice || item.price || 0).toString()
+            }));
+
+        if (lineItems.length === 0) {
+            return res.status(400).json({ error: 'Nenhum produto mapeado para WooCommerce' });
+        }
+
+        // Criar pedido no WooCommerce
+        const wcOrderData = {
+            status: 'pending',
+            billing: {
+                first_name: details.user_name || 'Cliente',
+                last_name: '',
+                email: details.user_email || req.user.email,
+                phone: details.user_whatsapp || '',
+                address_1: order.street || '',
+                address_2: order.complement || '',
+                city: order.city || '',
+                state: order.state || '',
+                postcode: order.cep || '',
+                country: 'BR'
+            },
+            shipping: {
+                first_name: details.user_name || 'Cliente',
+                last_name: '',
+                address_1: order.street || '',
+                address_2: order.complement || '',
+                city: order.city || '',
+                state: order.state || '',
+                postcode: order.cep || '',
+                country: 'BR'
+            },
+            line_items: lineItems,
+            customer_note: `Pedido do App de Revenda: ${order.order_number}`,
+            shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
+            meta_data: [
+                { key: '_revenda_app_order_id', value: String(orderId) },
+                { key: '_revenda_app_order_number', value: order.order_number || '' },
+                { key: '_payment_method_title', value: order.payment_method || 'Nao informado' },
+                { key: '_billing_number', value: order.number || '' },
+                { key: '_billing_neighborhood', value: order.neighborhood || '' },
+                { key: '_billing_cpf', value: details.user_cpf || '' }
+            ]
+        };
+
+        const wcOrder = await woocommerceService.createOrder(wcOrderData);
+
+        // Salvar IDs do WooCommerce no pedido local
+        await db.query(
+            `UPDATE orders SET woocommerce_order_id = $1, woocommerce_order_number = $2,
+             tracking_url = $3, updated_at = NOW() WHERE id = $4`,
+            [String(wcOrder.id), String(wcOrder.number),
+             `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
+             orderId]
+        );
+
+        res.json({
+            success: true,
+            woocommerce_order_id: wcOrder.id,
+            woocommerce_order_number: wcOrder.number
+        });
+    } catch (err) {
+        console.error('Erro ao criar pedido WooCommerce:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/woocommerce/update-status', authenticateToken, async (req, res) => {
+    try {
+        const { orderId, status } = req.body;
+
+        const { rows } = await db.query('SELECT woocommerce_order_id FROM orders WHERE id = $1', [orderId]);
+        if (rows.length === 0 || !rows[0].woocommerce_order_id) {
+            return res.status(404).json({ error: 'Pedido sem WooCommerce ID' });
+        }
+
+        await woocommerceService.updateOrderStatus(rows[0].woocommerce_order_id, status);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Erro ao atualizar status WooCommerce:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// WEBHOOKS
 // =============================================
 
 app.post('/webhooks/ipag', async (req, res) => {

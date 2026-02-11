@@ -26,6 +26,10 @@ services:
       - IPAG_API_KEY=${IPAG_API_KEY}
       # API URL (para callbacks do iPag)
       - API_URL=${API_URL}
+      # WooCommerce (patriciaelias.com.br)
+      - WC_URL=${WC_URL}
+      - WC_CONSUMER_KEY=${WC_CONSUMER_KEY}
+      - WC_CONSUMER_SECRET=${WC_CONSUMER_SECRET}
 
     deploy:
       mode: replicated
@@ -35,7 +39,7 @@ services:
           - node.role == manager
       labels:
         - traefik.enable=true
-        - traefik.http.routers.revenda-backend.rule=Host(`revenda.pelg.com.br`) && (PathPrefix(`/addresses`) || PathPrefix(`/orders`) || PathPrefix(`/payments`) || PathPrefix(`/users`) || PathPrefix(`/admin`) || PathPrefix(`/verification-codes`) || PathPrefix(`/abandoned-carts`) || PathPrefix(`/webhooks`) || PathPrefix(`/app-settings`))
+        - traefik.http.routers.revenda-backend.rule=Host(`revenda.pelg.com.br`) && (PathPrefix(`/addresses`) || PathPrefix(`/orders`) || PathPrefix(`/payments`) || PathPrefix(`/users`) || PathPrefix(`/admin`) || PathPrefix(`/verification-codes`) || PathPrefix(`/abandoned-carts`) || PathPrefix(`/webhooks`) || PathPrefix(`/app-settings`) || PathPrefix(`/woocommerce`))
         - traefik.http.routers.revenda-backend.entrypoints=websecure
         - traefik.http.routers.revenda-backend.priority=2
         - traefik.http.routers.revenda-backend.tls.certresolver=letsencryptresolver

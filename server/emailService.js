@@ -1,16 +1,19 @@
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: process.env.SMTP_ADDRESS || 'smtp.hostinger.com',
     port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465,
+    secure: false,
     auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.SMTP_USERNAME,
+        pass: process.env.SMTP_PASSWORD,
+    },
+    tls: {
+        rejectUnauthorized: process.env.SMTP_OPENSSL_VERIFY_MODE === 'peer',
     },
 });
 
-const FROM = process.env.SMTP_FROM || 'noreply@pelg.com.br';
+const FROM = process.env.SMTP_USERNAME || 'suporte@patriciaelias.com.br';
 
 async function sendVerificationEmail(email, nome, token) {
     const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';

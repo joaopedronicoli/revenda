@@ -3029,6 +3029,278 @@ app.get('/admin/gateway-types', authenticateToken, requireAdmin, async (req, res
 });
 
 // =============================================
+// ADMIN - Integracoes (Conexoes externas)
+// =============================================
+
+const INTEGRATION_TYPES = {
+    woocommerce: {
+        name: 'WooCommerce',
+        description: 'Sincronizacao com loja WooCommerce',
+        testable: true,
+        credentialFields: [
+            { key: 'wc_url', label: 'URL da Loja', type: 'text', placeholder: 'https://sualoja.com.br' },
+            { key: 'wc_consumer_key', label: 'Consumer Key', type: 'password' },
+            { key: 'wc_consumer_secret', label: 'Consumer Secret', type: 'password' }
+        ]
+    },
+    smtp: {
+        name: 'SMTP / Email',
+        description: 'Configuracao de envio de emails via SMTP',
+        testable: true,
+        credentialFields: [
+            { key: 'smtp_address', label: 'Servidor SMTP', type: 'text', placeholder: 'smtp.hostinger.com' },
+            { key: 'smtp_port', label: 'Porta', type: 'text', placeholder: '587' },
+            { key: 'smtp_username', label: 'Usuario (email)', type: 'text', placeholder: 'email@seudominio.com' },
+            { key: 'smtp_password', label: 'Senha', type: 'password' }
+        ]
+    },
+    bling: {
+        name: 'Bling ERP',
+        description: 'Integracao com Bling para gestao de estoque e notas fiscais',
+        testable: true,
+        credentialFields: [
+            { key: 'api_key', label: 'API Key (Bearer Token)', type: 'password' },
+            { key: 'api_url', label: 'API URL', type: 'text', placeholder: 'https://www.bling.com.br/Api/v3' }
+        ]
+    },
+    meta: {
+        name: 'Meta / Facebook',
+        description: 'Pixel do Facebook e API de Conversoes',
+        testable: true,
+        credentialFields: [
+            { key: 'pixel_id', label: 'Pixel ID', type: 'text' },
+            { key: 'access_token', label: 'Access Token', type: 'password' },
+            { key: 'dataset_id', label: 'Dataset ID (opcional)', type: 'text' }
+        ]
+    },
+    n8n: {
+        name: 'N8N Webhooks',
+        description: 'URLs de webhooks N8N para automacoes',
+        testable: true,
+        credentialFields: [
+            { key: 'registration_webhook_url', label: 'Webhook de Cadastro', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' },
+            { key: 'order_webhook_url', label: 'Webhook de Pedido', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' }
+        ]
+    }
+};
+
+// Helper: mascarar credenciais
+function maskCredentials(creds) {
+    const masked = {};
+    for (const [key, value] of Object.entries(creds || {})) {
+        if (typeof value === 'string' && value.length > 8) {
+            masked[key] = '****' + value.slice(-4);
+        } else if (typeof value === 'string' && value.length > 0) {
+            masked[key] = '****';
+        } else {
+            masked[key] = value;
+        }
+    }
+    return masked;
+}
+
+// GET /admin/integration-types — config dos tipos
+app.get('/admin/integration-types', authenticateToken, requireAdmin, async (req, res) => {
+    res.json(INTEGRATION_TYPES);
+});
+
+// GET /admin/integrations — listar todas (credenciais mascaradas)
+app.get('/admin/integrations', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM integrations ORDER BY integration_type');
+        const masked = rows.map(row => ({
+            ...row,
+            credentials_masked: maskCredentials(row.credentials),
+            credentials: undefined
+        }));
+        res.json(masked);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /admin/integrations — UPSERT (criar ou atualizar)
+app.post('/admin/integrations', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { integration_type, credentials, active } = req.body;
+
+        if (!integration_type || !credentials) {
+            return res.status(400).json({ error: 'integration_type e credentials sao obrigatorios' });
+        }
+
+        const typeInfo = INTEGRATION_TYPES[integration_type];
+        if (!typeInfo) return res.status(400).json({ error: `Tipo "${integration_type}" nao suportado` });
+
+        const { rows } = await db.query(
+            `INSERT INTO integrations (integration_type, display_name, description, credentials, active)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (integration_type) DO UPDATE SET
+                credentials = $4,
+                active = $5,
+                updated_at = NOW()
+             RETURNING *`,
+            [integration_type, typeInfo.name, typeInfo.description, JSON.stringify(credentials), active !== false]
+        );
+
+        res.status(201).json({ ...rows[0], credentials: undefined, credentials_masked: maskCredentials(rows[0].credentials) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /admin/integrations/:type — atualizar credenciais/active (smart merge)
+app.put('/admin/integrations/:type', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { credentials, active } = req.body;
+
+        let finalCredentials = credentials;
+        if (credentials) {
+            const { rows: existing } = await db.query(
+                'SELECT credentials FROM integrations WHERE integration_type = $1', [req.params.type]
+            );
+            if (existing.length > 0) {
+                const oldCreds = existing[0].credentials || {};
+                finalCredentials = { ...oldCreds };
+                for (const [key, value] of Object.entries(credentials)) {
+                    if (typeof value === 'string' && !value.startsWith('****')) {
+                        finalCredentials[key] = value;
+                    }
+                }
+            }
+        }
+
+        const { rows } = await db.query(
+            `UPDATE integrations SET
+                credentials = COALESCE($1, credentials),
+                active = COALESCE($2, active),
+                updated_at = NOW()
+             WHERE integration_type = $3 RETURNING *`,
+            [finalCredentials ? JSON.stringify(finalCredentials) : null, active, req.params.type]
+        );
+
+        if (rows.length === 0) return res.status(404).json({ error: 'Integracao nao encontrada' });
+        res.json({ ...rows[0], credentials: undefined, credentials_masked: maskCredentials(rows[0].credentials) });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /admin/integrations/:type — remover integracao
+app.delete('/admin/integrations/:type', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query('DELETE FROM integrations WHERE integration_type = $1', [req.params.type]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /admin/integrations/:type/test — testar conexao
+app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM integrations WHERE integration_type = $1', [req.params.type]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Integracao nao encontrada' });
+
+        const integration = rows[0];
+        const creds = integration.credentials || {};
+        let testResult = { success: false, message: 'Tipo nao testavel' };
+
+        switch (req.params.type) {
+            case 'woocommerce': {
+                const url = creds.wc_url;
+                if (!url) { testResult = { success: false, message: 'URL da loja nao configurada' }; break; }
+                const resp = await axios.get(`${url}/wp-json/wc/v3/system_status`, {
+                    auth: { username: creds.wc_consumer_key, password: creds.wc_consumer_secret },
+                    timeout: 10000
+                });
+                testResult = { success: true, message: `Conectado! WooCommerce ${resp.data?.environment?.version || ''}` };
+                break;
+            }
+            case 'smtp': {
+                const nodemailer = require('nodemailer');
+                const transport = nodemailer.createTransport({
+                    host: creds.smtp_address,
+                    port: Number(creds.smtp_port) || 587,
+                    secure: false,
+                    auth: { user: creds.smtp_username, pass: creds.smtp_password },
+                    tls: { rejectUnauthorized: false }
+                });
+                await transport.verify();
+                testResult = { success: true, message: `SMTP conectado (${creds.smtp_address}:${creds.smtp_port || 587})` };
+                break;
+            }
+            case 'bling': {
+                const apiUrl = creds.api_url || 'https://www.bling.com.br/Api/v3';
+                const resp = await axios.get(`${apiUrl}/contatos?limite=1`, {
+                    headers: { Authorization: `Bearer ${creds.api_key}` },
+                    timeout: 10000
+                });
+                testResult = { success: true, message: 'Bling conectado com sucesso!' };
+                break;
+            }
+            case 'meta': {
+                if (!creds.pixel_id || !creds.access_token) {
+                    testResult = { success: false, message: 'Pixel ID e Access Token sao obrigatorios' }; break;
+                }
+                const resp = await axios.get(`https://graph.facebook.com/v18.0/${creds.pixel_id}`, {
+                    params: { access_token: creds.access_token },
+                    timeout: 10000
+                });
+                testResult = { success: true, message: `Pixel "${resp.data?.name || creds.pixel_id}" conectado!` };
+                break;
+            }
+            case 'n8n': {
+                const webhookUrl = creds.registration_webhook_url || creds.order_webhook_url;
+                if (!webhookUrl) { testResult = { success: false, message: 'Nenhuma URL de webhook configurada' }; break; }
+                await axios.post(webhookUrl, { test: true, source: 'revenda-admin' }, { timeout: 10000 });
+                testResult = { success: true, message: 'Webhook N8N respondeu com sucesso!' };
+                break;
+            }
+        }
+
+        // Salvar resultado do teste
+        await db.query(
+            'UPDATE integrations SET last_tested_at = NOW(), last_test_result = $1 WHERE integration_type = $2',
+            [JSON.stringify(testResult), req.params.type]
+        );
+
+        res.json(testResult);
+    } catch (err) {
+        const failResult = { success: false, message: err.message };
+        await db.query(
+            'UPDATE integrations SET last_tested_at = NOW(), last_test_result = $1 WHERE integration_type = $2',
+            [JSON.stringify(failResult), req.params.type]
+        ).catch(() => {});
+        res.json(failResult);
+    }
+});
+
+// GET /public/n8n-webhooks — URLs de webhook N8N (sem auth)
+app.get('/public/n8n-webhooks', async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            "SELECT credentials FROM integrations WHERE integration_type = 'n8n' AND active = true"
+        );
+        if (rows.length === 0) {
+            return res.json({
+                registration_webhook_url: process.env.VITE_N8N_REGISTRATION_WEBHOOK || null,
+                order_webhook_url: process.env.VITE_N8N_ORDER_WEBHOOK || null
+            });
+        }
+        const creds = rows[0].credentials || {};
+        res.json({
+            registration_webhook_url: creds.registration_webhook_url || null,
+            order_webhook_url: creds.order_webhook_url || null
+        });
+    } catch (err) {
+        res.json({
+            registration_webhook_url: process.env.VITE_N8N_REGISTRATION_WEBHOOK || null,
+            order_webhook_url: process.env.VITE_N8N_ORDER_WEBHOOK || null
+        });
+    }
+});
+
+// =============================================
 // WEBHOOKS
 // =============================================
 

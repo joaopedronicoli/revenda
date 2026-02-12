@@ -1,27 +1,78 @@
 const nodemailer = require('nodemailer');
+const db = require('./db');
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_ADDRESS || 'smtp.hostinger.com',
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: false,
-    auth: {
-        user: process.env.SMTP_USERNAME,
-        pass: process.env.SMTP_PASSWORD,
-    },
-    tls: {
-        rejectUnauthorized: process.env.SMTP_OPENSSL_VERIFY_MODE === 'peer',
-    },
-});
+// Cache do transporter (5 minutos)
+let _cachedTransporter = null;
+let _cachedFrom = null;
+let _cacheExpires = 0;
 
-const FROM = process.env.SMTP_USERNAME || 'suporte@patriciaelias.com.br';
+async function getTransporter() {
+    const now = Date.now();
+    if (_cachedTransporter && now < _cacheExpires) {
+        return { transporter: _cachedTransporter, from: _cachedFrom };
+    }
+
+    let smtpHost, smtpPort, smtpUser, smtpPass;
+
+    // 1. Tentar ler credenciais do DB
+    try {
+        const { rows } = await db.query(
+            "SELECT credentials FROM integrations WHERE integration_type = 'smtp' AND active = true"
+        );
+        if (rows.length > 0) {
+            const creds = rows[0].credentials || {};
+            if (creds.smtp_username && creds.smtp_password) {
+                smtpHost = creds.smtp_address;
+                smtpPort = creds.smtp_port;
+                smtpUser = creds.smtp_username;
+                smtpPass = creds.smtp_password;
+            }
+        }
+    } catch (err) {
+        // DB nao disponivel, usar fallback
+    }
+
+    // 2. Fallback para .env
+    if (!smtpUser) {
+        smtpHost = process.env.SMTP_ADDRESS || 'smtp.hostinger.com';
+        smtpPort = process.env.SMTP_PORT || 587;
+        smtpUser = process.env.SMTP_USERNAME;
+        smtpPass = process.env.SMTP_PASSWORD;
+    }
+
+    const transporter = nodemailer.createTransport({
+        host: smtpHost || 'smtp.hostinger.com',
+        port: Number(smtpPort) || 587,
+        secure: false,
+        auth: { user: smtpUser, pass: smtpPass },
+        tls: { rejectUnauthorized: false },
+    });
+
+    const from = smtpUser || 'suporte@patriciaelias.com.br';
+
+    // Cachear por 5 minutos
+    _cachedTransporter = transporter;
+    _cachedFrom = from;
+    _cacheExpires = now + 5 * 60 * 1000;
+
+    return { transporter, from };
+}
+
+// Invalida cache (chamado quando credenciais mudam)
+function invalidateTransporterCache() {
+    _cachedTransporter = null;
+    _cachedFrom = null;
+    _cacheExpires = 0;
+}
 
 async function sendVerificationEmail(email, nome, token) {
+    const { transporter, from } = await getTransporter();
     const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
     const verifyLink = `${frontendUrl}/verify-email?token=${token}`;
 
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Confirme seu email - Patricia Elias Revenda',
             html: `
@@ -49,12 +100,13 @@ async function sendVerificationEmail(email, nome, token) {
 }
 
 async function sendPasswordResetEmail(email, nome, token) {
+    const { transporter, from } = await getTransporter();
     const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Recuperação de Senha - Patricia Elias Revenda',
             html: `
@@ -82,9 +134,11 @@ async function sendPasswordResetEmail(email, nome, token) {
 }
 
 async function sendOTPEmail(email, otpCode) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Seu código de acesso - Patricia Elias Revenda',
             html: `
@@ -108,6 +162,7 @@ async function sendOTPEmail(email, otpCode) {
 }
 
 async function sendCartRecoveryEmail(email, nome, recoveryLink, items) {
+    const { transporter, from } = await getTransporter();
     const itemsList = (items || []).map(item => {
         const name = item.name || `Produto #${item.id}`;
         const qty = item.quantity || 1;
@@ -116,7 +171,7 @@ async function sendCartRecoveryEmail(email, nome, recoveryLink, items) {
 
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Voce esqueceu algo no carrinho! - Patricia Elias',
             html: `
@@ -144,11 +199,12 @@ async function sendCartRecoveryEmail(email, nome, recoveryLink, items) {
 }
 
 async function sendApprovalEmail(email, nome) {
+    const { transporter, from } = await getTransporter();
     const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
 
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Cadastro Aprovado! - Patricia Elias Revenda',
             html: `
@@ -179,9 +235,11 @@ async function sendApprovalEmail(email, nome) {
 }
 
 async function sendNewReferralEmail(email, name, referredName) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Nova Indicacao! - Patricia Elias Revenda',
             html: `
@@ -201,9 +259,11 @@ async function sendNewReferralEmail(email, name, referredName) {
 }
 
 async function sendCommissionEarnedEmail(email, name, amount, orderRef) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Comissao Creditada! - Patricia Elias Revenda',
             html: `
@@ -228,9 +288,11 @@ async function sendCommissionEarnedEmail(email, name, amount, orderRef) {
 }
 
 async function sendPayoutApprovedEmail(email, name, amount) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Saque Aprovado! - Patricia Elias Revenda',
             html: `
@@ -254,9 +316,11 @@ async function sendPayoutApprovedEmail(email, name, amount) {
 }
 
 async function sendPayoutRejectedEmail(email, name, reason) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Saque Recusado - Patricia Elias Revenda',
             html: `
@@ -276,9 +340,11 @@ async function sendPayoutRejectedEmail(email, name, reason) {
 }
 
 async function sendPayoutPaidEmail(email, name, amount) {
+    const { transporter, from } = await getTransporter();
+
     try {
         await transporter.sendMail({
-            from: `"Patricia Elias" <${FROM}>`,
+            from: `"Patricia Elias" <${from}>`,
             to: email,
             subject: 'Pagamento Enviado! - Patricia Elias Revenda',
             html: `
@@ -311,5 +377,6 @@ module.exports = {
     sendCommissionEarnedEmail,
     sendPayoutApprovedEmail,
     sendPayoutRejectedEmail,
-    sendPayoutPaidEmail
+    sendPayoutPaidEmail,
+    invalidateTransporterCache
 };

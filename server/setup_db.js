@@ -477,6 +477,26 @@ const updateSchema = async () => {
     console.log('Migracao email_verified para usuarios existentes concluida.');
 
     // =============================================
+    // TABELA - Integracoes (conexoes externas)
+    // =============================================
+
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS integrations (
+        id SERIAL PRIMARY KEY,
+        integration_type VARCHAR(50) UNIQUE NOT NULL,
+        display_name VARCHAR(100) NOT NULL,
+        description TEXT,
+        credentials JSONB NOT NULL DEFAULT '{}',
+        active BOOLEAN DEFAULT true,
+        last_tested_at TIMESTAMP,
+        last_test_result JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "integrations" verificada/criada com sucesso.');
+
+    // =============================================
     // NOVAS TABELAS - Sistema de Gateways Multi-CNPJ
     // =============================================
 

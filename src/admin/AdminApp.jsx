@@ -18,6 +18,7 @@ import PayoutManagement from './pages/PayoutManagement'
 import AffiliateReports from './pages/AffiliateReports'
 import CreativeManagement from './pages/CreativeManagement'
 import PaymentGateways from './pages/PaymentGateways'
+import Connections from './pages/Connections'
 
 // Admin Protected Route
 function AdminProtectedRoute({ children, adminOnly = false }) {
@@ -84,6 +85,11 @@ export default function AdminApp() {
                     <Route path="payment-gateways" element={
                         <AdminProtectedRoute adminOnly>
                             <PaymentGateways />
+                        </AdminProtectedRoute>
+                    } />
+                    <Route path="connections" element={
+                        <AdminProtectedRoute adminOnly>
+                            <Connections />
                         </AdminProtectedRoute>
                     } />
                     <Route

@@ -16,7 +16,8 @@ import {
     Wallet,
     BarChart3,
     Image,
-    CreditCard
+    CreditCard,
+    Plug
 } from 'lucide-react'
 
 const menuItems = [
@@ -75,6 +76,12 @@ const menuItems = [
         title: 'Gateways',
         icon: CreditCard,
         path: '/admin/payment-gateways',
+        adminOnly: true
+    },
+    {
+        title: 'Conexoes',
+        icon: Plug,
+        path: '/admin/connections',
         adminOnly: true
     },
     {

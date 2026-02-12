@@ -11,7 +11,7 @@ import KitSelector from '../components/KitSelector'
 
 export default function OrderReview() {
     const navigate = useNavigate()
-    const { user } = useAuth()
+    const { user, isProfileComplete } = useAuth()
     const { cart, getSummary, clearCart, selectedKit, setSelectedKit, commissionCredit, setCommissionCredit } = useCartStore()
     const [addresses, setAddresses] = useState([])
     const [selectedAddress, setSelectedAddress] = useState(null)
@@ -61,6 +61,12 @@ export default function OrderReview() {
 
             // SE TEM ENDERECO, JA CRIAR O PEDIDO AUTOMATICAMENTE (apenas uma vez)
             if (selectedAddr && cart.length > 0 && !orderCreated) {
+                // Block order creation if profile is incomplete
+                if (!user?.document_type) {
+                    setLoading(false)
+                    return // Don't create order - user needs to complete profile
+                }
+
                 // Limpar qualquer pedido pendente orfao do usuario antes de criar novo
                 await api.delete('/orders/pending-orphans').catch(() => {})
 
@@ -440,7 +446,21 @@ export default function OrderReview() {
 
                         {/* Payment Method */}
                         <div className="bg-white rounded-xl p-6 border border-slate-200">
-                            {paymentData?.orderId ? (
+                            {!isProfileComplete ? (
+                                <div className="text-center py-8">
+                                    <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                                    <h3 className="text-lg font-semibold text-slate-900 mb-2">Cadastro incompleto</h3>
+                                    <p className="text-sm text-slate-600 mb-4">
+                                        Para finalizar seu pedido, complete seu cadastro com seus dados pessoais (documento, telefone, etc).
+                                    </p>
+                                    <button
+                                        onClick={() => navigate('/complete-profile')}
+                                        className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                    >
+                                        Completar cadastro
+                                    </button>
+                                </div>
+                            ) : paymentData?.orderId ? (
                                 <PaymentSelector
                                     total={Math.round((parseFloat(summary.totalWithDiscount) || 0) * 100)} // Converter para centavos
                                     customer={{

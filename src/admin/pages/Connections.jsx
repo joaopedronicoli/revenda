@@ -18,6 +18,49 @@ const TYPE_COLORS = {
     n8n: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' }
 }
 
+// Fallback local caso o endpoint /admin/integration-types falhe
+const FALLBACK_TYPES = {
+    woocommerce: {
+        name: 'WooCommerce', description: 'Sincronizacao com loja WooCommerce', testable: true,
+        credentialFields: [
+            { key: 'wc_url', label: 'URL da Loja', type: 'text', placeholder: 'https://sualoja.com.br' },
+            { key: 'wc_consumer_key', label: 'Consumer Key', type: 'password' },
+            { key: 'wc_consumer_secret', label: 'Consumer Secret', type: 'password' }
+        ]
+    },
+    smtp: {
+        name: 'SMTP / Email', description: 'Configuracao de envio de emails via SMTP', testable: true,
+        credentialFields: [
+            { key: 'smtp_address', label: 'Servidor SMTP', type: 'text', placeholder: 'smtp.hostinger.com' },
+            { key: 'smtp_port', label: 'Porta', type: 'text', placeholder: '587' },
+            { key: 'smtp_username', label: 'Usuario (email)', type: 'text', placeholder: 'email@seudominio.com' },
+            { key: 'smtp_password', label: 'Senha', type: 'password' }
+        ]
+    },
+    bling: {
+        name: 'Bling ERP', description: 'Integracao com Bling para gestao de estoque e notas fiscais', testable: true,
+        credentialFields: [
+            { key: 'api_key', label: 'API Key (Bearer Token)', type: 'password' },
+            { key: 'api_url', label: 'API URL', type: 'text', placeholder: 'https://www.bling.com.br/Api/v3' }
+        ]
+    },
+    meta: {
+        name: 'Meta / Facebook', description: 'Pixel do Facebook e API de Conversoes', testable: true,
+        credentialFields: [
+            { key: 'pixel_id', label: 'Pixel ID', type: 'text' },
+            { key: 'access_token', label: 'Access Token', type: 'password' },
+            { key: 'dataset_id', label: 'Dataset ID (opcional)', type: 'text' }
+        ]
+    },
+    n8n: {
+        name: 'N8N Webhooks', description: 'URLs de webhooks N8N para automacoes', testable: true,
+        credentialFields: [
+            { key: 'registration_webhook_url', label: 'Webhook de Cadastro', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' },
+            { key: 'order_webhook_url', label: 'Webhook de Pedido', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' }
+        ]
+    }
+}
+
 export default function Connections() {
     const [integrations, setIntegrations] = useState([])
     const [integrationTypes, setIntegrationTypes] = useState({})
@@ -33,14 +76,18 @@ export default function Connections() {
     const loadData = async () => {
         try {
             setLoading(true)
-            const [intRes, typesRes] = await Promise.all([
+            const [intRes, typesRes] = await Promise.allSettled([
                 api.get('/admin/integrations'),
                 api.get('/admin/integration-types')
             ])
-            setIntegrations(Array.isArray(intRes.data) ? intRes.data : [])
-            setIntegrationTypes(typesRes.data && typeof typesRes.data === 'object' ? typesRes.data : {})
+            if (intRes.status === 'fulfilled') {
+                setIntegrations(Array.isArray(intRes.value.data) ? intRes.value.data : [])
+            }
+            const typesData = typesRes.status === 'fulfilled' ? typesRes.value.data : null
+            const hasTypes = typesData && typeof typesData === 'object' && !Array.isArray(typesData) && Object.keys(typesData).length > 0
+            setIntegrationTypes(hasTypes ? typesData : FALLBACK_TYPES)
         } catch (err) {
-            setError('Erro ao carregar dados: ' + err.message)
+            setIntegrationTypes(FALLBACK_TYPES)
         } finally {
             setLoading(false)
         }

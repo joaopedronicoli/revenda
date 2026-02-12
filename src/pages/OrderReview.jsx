@@ -19,6 +19,7 @@ export default function OrderReview() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
     const [orderCreated, setOrderCreated] = useState(false)
+    const [orderNumber, setOrderNumber] = useState(null)
     const [creditInput, setCreditInput] = useState('')
     const [couponCode, setCouponCode] = useState('')
     const [couponResult, setCouponResult] = useState(null)
@@ -53,6 +54,7 @@ export default function OrderReview() {
                     if (existingOrder && existingOrder.status === 'pending') {
                         console.log('Usando pedido existente:', existingOrderId)
                         setPaymentData({ orderId: existingOrderId })
+                        setOrderNumber(existingOrder.order_number)
                         setOrderCreated(true)
                         setLoading(false)
                         return
@@ -62,6 +64,7 @@ export default function OrderReview() {
                         try {
                             await api.put(`/orders/${existingOrderId}/retry-payment`)
                             setPaymentData({ orderId: existingOrderId, retrying: true })
+                            setOrderNumber(existingOrder.order_number)
                             setOrderCreated(true)
                             setLoading(false)
                             return
@@ -130,6 +133,7 @@ export default function OrderReview() {
 
                 if (order) {
                     setPaymentData({ orderId: order.id })
+                    setOrderNumber(order.order_number)
                     setOrderCreated(true)
                     localStorage.setItem('pendingOrderId', order.id)
                 }
@@ -198,6 +202,7 @@ export default function OrderReview() {
 
             if (order) {
                 setPaymentData({ orderId: order.id })
+                setOrderNumber(order.order_number)
                 setOrderCreated(true)
                 localStorage.setItem('pendingOrderId', order.id)
             }
@@ -335,7 +340,12 @@ export default function OrderReview() {
                 {/* Header */}
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900 mb-2">Revisar Pedido</h1>
-                    <p className="text-slate-600">Confira os detalhes antes de finalizar</p>
+                    <p className="text-slate-600">
+                        {orderNumber && !orderNumber.startsWith('TEMP-')
+                            ? <>Pedido <strong>#{orderNumber}</strong> — Confira os detalhes antes de finalizar</>
+                            : 'Confira os detalhes antes de finalizar'
+                        }
+                    </p>
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-6">

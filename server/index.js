@@ -1547,14 +1547,20 @@ app.post('/orders', authenticateToken, async (req, res) => {
             }
         }
 
-        // Buscar kit se necessario
+        // Buscar kit se necessario (kits agora ficam na tabela products com is_kit = true)
         let kitData = null;
         let finalTotal = productTotal;
         if (kit_id) {
-            const { rows: kitRows } = await db.query('SELECT * FROM kits WHERE id = $1 AND active = true', [kit_id]);
-            if (kitRows.length === 0) return res.status(400).json({ message: 'Kit nao encontrado' });
-            kitData = kitRows[0];
-            finalTotal += parseFloat(kitData.price);
+            const { rows: kitRows } = await db.query('SELECT * FROM products WHERE id = $1 AND is_kit = true AND active = true', [kit_id]);
+            if (kitRows.length === 0) {
+                // Fallback: tentar na tabela kits antiga
+                const { rows: oldKitRows } = await db.query('SELECT * FROM kits WHERE id = $1 AND active = true', [kit_id]);
+                if (oldKitRows.length === 0) return res.status(400).json({ message: 'Kit nao encontrado' });
+                kitData = { id: oldKitRows[0].id, name: oldKitRows[0].name, slug: oldKitRows[0].slug, price: parseFloat(oldKitRows[0].price) };
+            } else {
+                kitData = { id: kitRows[0].id, name: kitRows[0].name, slug: kitRows[0].sku || kitRows[0].name, price: parseFloat(kitRows[0].table_price) };
+            }
+            finalTotal += kitData.price;
         }
 
         // Aplicar credito de comissao

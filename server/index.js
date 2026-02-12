@@ -518,12 +518,24 @@ app.put('/users/me', authenticateToken, async (req, res) => {
 
 // DELETE account (self)
 app.delete('/users/me', authenticateToken, async (req, res) => {
+    const client = await db.connect();
     try {
-        await db.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+        await client.query('BEGIN');
+        const uid = req.user.id;
+        // Remove FK references that don't CASCADE
+        await client.query('UPDATE orders SET user_id = NULL WHERE user_id = $1', [uid]);
+        await client.query('UPDATE commissions SET source_user_id = NULL WHERE source_user_id = $1', [uid]);
+        await client.query('UPDATE users SET referred_by = NULL WHERE referred_by = $1', [uid]);
+        // Delete user (CASCADE handles addresses, verification_codes, abandoned_carts, referrals, commissions, level_history, etc.)
+        await client.query('DELETE FROM users WHERE id = $1', [uid]);
+        await client.query('COMMIT');
         res.json({ message: 'Conta excluida com sucesso' });
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error(err);
         res.status(500).json({ message: 'Erro ao excluir conta' });
+    } finally {
+        client.release();
     }
 });
 
@@ -1668,8 +1680,11 @@ app.put('/admin/users/:id/approve', authenticateToken, requireAdmin, async (req,
             );
             if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
 
-            // Gerar referral_code automaticamente ao aprovar
+            // Enviar email de aprovacao e gerar referral_code
             if (status === 'approved') {
+                emailService.sendApprovalEmail(rows[0].email, rows[0].name).catch(e =>
+                    console.warn('Erro ao enviar email de aprovacao:', e.message)
+                );
                 try {
                     const code = generateReferralCode(rows[0].name);
                     let attempts = 0;

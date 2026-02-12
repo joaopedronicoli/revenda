@@ -143,4 +143,39 @@ async function sendCartRecoveryEmail(email, nome, recoveryLink, items) {
     }
 }
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendCartRecoveryEmail };
+async function sendApprovalEmail(email, nome) {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
+
+    try {
+        await transporter.sendMail({
+            from: `"Patricia Elias" <${FROM}>`,
+            to: email,
+            subject: 'Cadastro Aprovado! - Patricia Elias Revenda',
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <div style="background-color: #e8f5e9; display: inline-block; padding: 20px; border-radius: 50%;">
+                            <span style="font-size: 48px;">&#10004;</span>
+                        </div>
+                    </div>
+                    <h2 style="color: #2e7d32; text-align: center;">Parabens, ${nome || 'revendedor(a)'}!</h2>
+                    <p style="text-align: center; font-size: 16px; color: #333;">Seu cadastro no programa de revenda <strong>Patricia Elias</strong> foi <strong>aprovado</strong> com sucesso!</p>
+                    <p style="text-align: center; color: #666;">Agora voce ja pode acessar nossa loja exclusiva, fazer seus pedidos e comecar a revender.</p>
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="${frontendUrl}"
+                           style="background-color: #e91e63; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-size: 16px;">
+                            Acessar a Loja
+                        </a>
+                    </div>
+                    <p style="color: #999; font-size: 12px; text-align: center; margin-top: 30px;">Qualquer duvida, entre em contato pelo email revendedor@patriciaelias.com.br</p>
+                </div>
+            `,
+        });
+        return { success: true };
+    } catch (err) {
+        console.error('Erro ao enviar email de aprovacao:', err);
+        return { success: false, error: err.message };
+    }
+}
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendOTPEmail, sendCartRecoveryEmail, sendApprovalEmail };

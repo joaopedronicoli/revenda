@@ -22,12 +22,12 @@ export default function ProfileEditor() {
     const [formData, setFormData] = useState({
         name: user?.name || '',
         email: user?.email || '',
-        whatsapp: user?.phone || '',
-        documentType: user?.documentType || '',
+        whatsapp: user?.telefone || '',
+        documentType: user?.document_type || '',
         cpf: user?.cpf || '',
         cnpj: user?.cnpj || '',
         profession: user?.profession || '',
-        companyName: user?.companyName || ''
+        companyName: user?.company_name || ''
     })
 
     useEffect(() => {
@@ -104,7 +104,7 @@ export default function ProfileEditor() {
         e.preventDefault()
 
         // Verificar se whatsapp mudou (email não é editável)
-        const whatsappChanged = formData.whatsapp !== (user?.phone || '')
+        const whatsappChanged = formData.whatsapp !== (user?.telefone || '')
 
         if (whatsappChanged) {
             setPendingValue(formData.whatsapp)

@@ -14,6 +14,21 @@ export default function PendingApproval() {
     const [requestSentMessage, setRequestSentMessage] = useState(false)
     const [countdown, setCountdown] = useState(7)
 
+    // Auto-check approval every 30s
+    useEffect(() => {
+        if (showApprovedModal) return
+        const interval = setInterval(async () => {
+            try {
+                const response = await api.get('/users/me')
+                if (response.data?.approval_status === 'approved') {
+                    setShowApprovedModal(true)
+                    await refreshApprovalStatus()
+                }
+            } catch (e) { /* ignore */ }
+        }, 30000)
+        return () => clearInterval(interval)
+    }, [showApprovedModal, refreshApprovalStatus])
+
     // Countdown timer when approved
     useEffect(() => {
         if (showApprovedModal && countdown > 0) {

@@ -53,6 +53,7 @@ const mergeLocalUser = (fullUser, localUser) => {
 
     const merged = {
         ...fullUser,
+        role: localUser.role || fullUser.role,
         approval_status: localUser.approval_status,
         rejection_reason: localUser.rejection_reason,
         level: localUser.level || 'starter',
@@ -200,6 +201,25 @@ export const AuthProvider = ({ children }) => {
 
         salvarCriptografado(AUTH_KEY, { token, user: mergedUser })
         setUser(mergedUser)
+
+        // Salvar endereco do cadastro na revenda local
+        if (cep && street && city && state) {
+            try {
+                await api.post('/addresses', {
+                    nickname: 'Principal',
+                    cep,
+                    street,
+                    number: number || 'S/N',
+                    complement: complement || '',
+                    neighborhood: neighborhood || '',
+                    city,
+                    state,
+                    is_default: true
+                })
+            } catch (addrErr) {
+                console.warn('Erro ao salvar endereco do cadastro:', addrErr.message)
+            }
+        }
 
         // Enviar email de verificacao apos registro
         try {

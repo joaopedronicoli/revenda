@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ShoppingCart, Search, RefreshCw, Send, Eye, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { ShoppingCart, Search, RefreshCw, Send, Eye, CheckCircle, Clock, XCircle, MessageCircle } from 'lucide-react'
 import api from '../../services/api'
 
 const statusConfig = {
@@ -99,7 +99,8 @@ export default function AbandonedCarts() {
         const searchLower = search.toLowerCase()
         return (
             cart.user_name?.toLowerCase().includes(searchLower) ||
-            cart.user_email?.toLowerCase().includes(searchLower)
+            cart.user_email?.toLowerCase().includes(searchLower) ||
+            cart.telefone?.toLowerCase().includes(searchLower)
         )
     })
 
@@ -131,7 +132,7 @@ export default function AbandonedCarts() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                         <input
                             type="text"
-                            placeholder="Buscar por nome ou email..."
+                            placeholder="Buscar por nome, email ou telefone..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
@@ -194,6 +195,9 @@ export default function AbandonedCarts() {
                                                 <p className="text-xs text-slate-500">
                                                     {cart.user_email || '-'}
                                                 </p>
+                                                {cart.telefone && (
+                                                    <p className="text-xs text-slate-400">{cart.telefone}</p>
+                                                )}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-slate-900">
                                                 {cart.item_count || items.length} {(cart.item_count || items.length) === 1 ? 'item' : 'itens'}
@@ -236,14 +240,24 @@ export default function AbandonedCarts() {
                                                         <Eye className="w-4 h-4" />
                                                     </button>
                                                     {(!cart.status || cart.status === 'abandoned') && (
-                                                        <button
-                                                            onClick={() => triggerRecovery(cart.id, 'email')}
-                                                            disabled={sending || cart.recovery_email_sent}
-                                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                                                            title="Enviar recuperacao por email"
-                                                        >
-                                                            <Send className="w-4 h-4" />
-                                                        </button>
+                                                        <>
+                                                            <button
+                                                                onClick={() => triggerRecovery(cart.id, 'email')}
+                                                                disabled={sending || cart.recovery_email_sent}
+                                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
+                                                                title={cart.recovery_email_sent ? 'Email ja enviado' : 'Enviar recuperacao por email'}
+                                                            >
+                                                                <Send className="w-4 h-4" />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => triggerRecovery(cart.id, 'whatsapp')}
+                                                                disabled={sending || cart.recovery_whatsapp_sent}
+                                                                className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                                                                title={cart.recovery_whatsapp_sent ? 'WhatsApp ja enviado' : 'Enviar recuperacao por WhatsApp'}
+                                                            >
+                                                                <MessageCircle className="w-4 h-4" />
+                                                            </button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </td>

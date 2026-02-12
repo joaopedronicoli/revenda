@@ -64,15 +64,37 @@ export default function AddressManager() {
         }
     }
 
+    const formatCep = (value) => {
+        const digits = value.replace(/\D/g, '').slice(0, 8)
+        if (digits.length > 5) {
+            return `${digits.slice(0, 5)}-${digits.slice(5)}`
+        }
+        return digits
+    }
+
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target
+
+        if (name === 'cep') {
+            const formatted = formatCep(value)
+            setFormData(prev => ({ ...prev, cep: formatted }))
+            const digits = formatted.replace(/\D/g, '')
+            if (digits.length === 8) {
+                fetchAddressFromCep(digits)
+            }
+            return
+        }
+
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
         }))
+    }
 
-        if (name === 'cep' && value.replace(/\D/g, '').length === 8) {
-            fetchAddressFromCep(value)
+    const handleCepBlur = () => {
+        const digits = formData.cep.replace(/\D/g, '')
+        if (digits.length === 8 && !formData.street) {
+            fetchAddressFromCep(digits)
         }
     }
 
@@ -174,16 +196,28 @@ export default function AddressManager() {
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">CEP *</label>
-                            <input
-                                type="text"
-                                name="cep"
-                                value={formData.cep}
-                                onChange={handleChange}
-                                required
-                                placeholder="00000-000"
-                                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
-                            />
-                            {loadingCep && <p className="text-xs text-slate-500 mt-1">Buscando endereço...</p>}
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    name="cep"
+                                    value={formData.cep}
+                                    onChange={handleChange}
+                                    onBlur={handleCepBlur}
+                                    required
+                                    maxLength={9}
+                                    placeholder="00000-000"
+                                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => fetchAddressFromCep(formData.cep)}
+                                    disabled={loadingCep || formData.cep.replace(/\D/g, '').length !== 8}
+                                    className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
+                                >
+                                    {loadingCep ? 'Buscando...' : 'Buscar'}
+                                </button>
+                            </div>
+                            {loadingCep && <p className="text-xs text-primary mt-1">Buscando endereço pelo CEP...</p>}
                         </div>
 
                         <div className="grid grid-cols-3 gap-4">

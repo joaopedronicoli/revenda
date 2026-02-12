@@ -5,10 +5,11 @@ import { useAuth } from '../context/AuthContext'
 import clsx from 'clsx'
 
 const formatPrice = (price) => {
+    const num = parseFloat(price)
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL'
-    }).format(price)
+    }).format(isNaN(num) ? 0 : num)
 }
 
 const levelNames = { starter: 'Starter', prata: 'Prata', ouro: 'Ouro' }
@@ -19,7 +20,7 @@ export default function CartFooter() {
     const { totalWithDiscount, itemCount, meetsMinimum, minimumOrder, remainingToMinimum, discountStandard, isFirstOrder } = getSummary()
     const navigate = useNavigate()
 
-    const percentComplete = Math.min(100, (totalWithDiscount / minimumOrder) * 100)
+    const percentComplete = minimumOrder > 0 ? Math.min(100, ((totalWithDiscount || 0) / minimumOrder) * 100) : 0
 
     // Permitir checkout se atingiu o valor mínimo E está aprovado
     const canCheckout = meetsMinimum && isApproved
@@ -62,7 +63,7 @@ export default function CartFooter() {
                 {isApproved && (
                     <div className="flex items-center justify-center gap-2 mb-3 text-xs text-slate-500">
                         <Shield className="w-3.5 h-3.5" />
-                        <span>Nivel {levelNames[userLevel] || 'Starter'} - {(discountStandard * 100).toFixed(0)}% de desconto</span>
+                        <span>Nivel {levelNames[userLevel] || 'Starter'} - {((parseFloat(discountStandard) || 0) * 100).toFixed(0)}% de desconto</span>
                     </div>
                 )}
 

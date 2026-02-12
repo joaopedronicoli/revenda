@@ -147,7 +147,7 @@ export default function OrderReview() {
                         itemCount: summary.itemCount
                     }
                 },
-                total: summary.totalWithDiscount,
+                total: parseFloat(summary.totalWithDiscount) || 0,
                 status: 'pending',
                 address_id: selectedAddress.id,
                 kit_id: selectedKit?.id || null,
@@ -203,10 +203,11 @@ export default function OrderReview() {
     const summary = getSummary()
 
     const formatCurrency = (value) => {
+        const num = parseFloat(value)
         return new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL'
-        }).format(value)
+        }).format(isNaN(num) ? 0 : num)
     }
 
     if (loading) {
@@ -225,7 +226,7 @@ export default function OrderReview() {
             navigate('/confirmation')
             return null
         }
-        navigate('/cart')
+        navigate('/')
         return null
     }
 
@@ -441,7 +442,7 @@ export default function OrderReview() {
                         <div className="bg-white rounded-xl p-6 border border-slate-200">
                             {paymentData?.orderId ? (
                                 <PaymentSelector
-                                    total={Math.round(summary.totalWithDiscount * 100)} // Converter para centavos
+                                    total={Math.round((parseFloat(summary.totalWithDiscount) || 0) * 100)} // Converter para centavos
                                     customer={{
                                         name: user?.name,
                                         email: user?.email,
@@ -475,7 +476,7 @@ export default function OrderReview() {
                                             <p className="text-sm text-slate-600">Quantidade: {item.quantity}</p>
                                         </div>
                                         <p className="font-semibold text-slate-900">
-                                            {formatCurrency(item.tablePrice * item.quantity)}
+                                            {formatCurrency((parseFloat(item.tablePrice) || 0) * (item.quantity || 0))}
                                         </p>
                                     </div>
                                 ))}
@@ -507,12 +508,14 @@ export default function OrderReview() {
                                     <span className="text-slate-600">Subtotal (tabela)</span>
                                     <span className="font-medium">{formatCurrency(summary.totalTable)}</span>
                                 </div>
+                                {summary.totalTable > summary.productTotal && (
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Desconto ({(summary.discountStandard * 100).toFixed(0)}%)</span>
+                                    <span className="text-slate-600">Desconto ({((parseFloat(summary.discountStandard) || 0) * 100).toFixed(0)}%)</span>
                                     <span className="font-medium text-green-600">
                                         -{formatCurrency(summary.totalTable - summary.productTotal)}
                                     </span>
                                 </div>
+                                )}
                                 {summary.kitPrice > 0 && (
                                     <div className="flex justify-between text-sm">
                                         <span className="text-slate-600">Kit Inicial</span>
@@ -562,7 +565,7 @@ export default function OrderReview() {
                             </div>
 
                             <button
-                                onClick={() => navigate('/cart')}
+                                onClick={() => navigate('/')}
                                 className="w-full bg-slate-100 text-slate-700 py-3 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
                             >
                                 Voltar ao Carrinho

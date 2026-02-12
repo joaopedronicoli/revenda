@@ -2,10 +2,11 @@ import { Gift, TrendingUp } from 'lucide-react'
 
 export default function DiscountUnlockAlert({ remainingAmount }) {
     const formatPrice = (price) => {
+        const num = parseFloat(price)
         return new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL'
-        }).format(price)
+        }).format(isNaN(num) ? 0 : num)
     }
 
     return (

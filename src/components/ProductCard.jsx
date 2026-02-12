@@ -3,10 +3,11 @@ import { useCartStore } from '../store/cartStore'
 import { useAuth } from '../context/AuthContext'
 
 const formatPrice = (price) => {
+    const num = parseFloat(price)
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL'
-    }).format(price)
+    }).format(isNaN(num) ? 0 : num)
 }
 
 export default function ProductCard({ product }) {

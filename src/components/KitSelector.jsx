@@ -3,10 +3,11 @@ import { Package, Check, Star } from 'lucide-react'
 import api from '../services/api'
 
 const formatPrice = (price) => {
+    const num = parseFloat(price)
     return new Intl.NumberFormat('pt-BR', {
         style: 'currency',
         currency: 'BRL'
-    }).format(price)
+    }).format(isNaN(num) ? 0 : num)
 }
 
 export default function KitSelector({ selectedKit, onSelectKit }) {

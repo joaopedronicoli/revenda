@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Users, Search, Shield, CheckCircle, Clock, XCircle, ShieldOff, Mail, Phone, TrendingUp, UserPlus } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
+import { formatPhone } from '../../lib/formatPhone'
 
 const roleConfig = {
     administrator: { label: 'Administrador', color: 'bg-purple-100 text-purple-800' },
@@ -590,9 +591,10 @@ export default function UsersManagement() {
                                 <input
                                     type="text"
                                     value={newUser.telefone}
-                                    onChange={(e) => setNewUser(prev => ({ ...prev, telefone: e.target.value }))}
+                                    onChange={(e) => setNewUser(prev => ({ ...prev, telefone: formatPhone(e.target.value) }))}
                                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                                     placeholder="(00) 00000-0000"
+                                    maxLength={15}
                                 />
                             </div>
                             <div>

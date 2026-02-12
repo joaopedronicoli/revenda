@@ -16,6 +16,25 @@ const LEVEL_DISCOUNTS = {
     ouro: 0.40
 }
 
+// Sync central-pelg user data to revenda local DB (fire-and-forget)
+const syncCentralToLocal = async (centralUser) => {
+    try {
+        await api.post('/users/sync', {
+            name: centralUser.name,
+            telefone: centralUser.telefone,
+            foto: centralUser.foto,
+            document_type: centralUser.document_type,
+            cpf: centralUser.cpf,
+            cnpj: centralUser.cnpj,
+            company_name: centralUser.company_name,
+            profession: centralUser.profession,
+            profession_other: centralUser.profession_other,
+        })
+    } catch (err) {
+        console.warn('Erro ao sincronizar dados com revenda local:', err.message)
+    }
+}
+
 // Buscar dados locais (approval_status + level data) do backend da revenda
 const fetchLocalUser = async (token) => {
     try {
@@ -76,6 +95,8 @@ export const AuthProvider = ({ children }) => {
                     // Validate token by calling /auth/me
                     const response = await centralApi.get('/auth/me')
                     const fullUser = response.data
+                    // Sync central data to local DB (fire-and-forget)
+                    syncCentralToLocal(fullUser)
                     // Buscar dados locais (approval_status + level) da revenda
                     const localUser = await fetchLocalUser(authData.token)
                     const mergedUser = mergeLocalUser(fullUser, localUser)
@@ -132,7 +153,10 @@ export const AuthProvider = ({ children }) => {
         })
         const fullUser = meResponse.data
 
-        // 5. Buscar dados locais (approval_status + level) da revenda
+        // 5. Sync central data to local DB (fire-and-forget)
+        syncCentralToLocal(fullUser)
+
+        // 6. Buscar dados locais (approval_status + level) da revenda
         const localUser = await fetchLocalUser(token)
         const mergedUser = mergeLocalUser(fullUser, localUser)
 
@@ -168,6 +192,9 @@ export const AuthProvider = ({ children }) => {
         })
         const fullUser = meResponse.data
 
+        // Sync central data to local DB (fire-and-forget)
+        syncCentralToLocal(fullUser)
+
         const localUser = await fetchLocalUser(token)
         const mergedUser = mergeLocalUser(fullUser, localUser)
 
@@ -193,6 +220,9 @@ export const AuthProvider = ({ children }) => {
             headers: { Authorization: `Bearer ${token}` }
         })
         const fullUser = meResponse.data
+
+        // Sync central data to local DB (fire-and-forget)
+        syncCentralToLocal(fullUser)
 
         const localUser = await fetchLocalUser(token)
         const mergedUser = mergeLocalUser(fullUser, localUser)
@@ -230,6 +260,9 @@ export const AuthProvider = ({ children }) => {
             headers: { Authorization: `Bearer ${token}` }
         })
         const fullUser = meResponse.data
+
+        // Sync central data to local DB (fire-and-forget)
+        syncCentralToLocal(fullUser)
 
         const localUser = await fetchLocalUser(token)
         const mergedUser = mergeLocalUser(fullUser, localUser)
@@ -283,6 +316,8 @@ export const AuthProvider = ({ children }) => {
         try {
             const response = await centralApi.get('/auth/me')
             const fullUser = response.data
+            // Sync central data to local DB (fire-and-forget)
+            syncCentralToLocal(fullUser)
             const localUser = await fetchLocalUser()
             const mergedUser = mergeLocalUser(fullUser, localUser)
             setUser(mergedUser)

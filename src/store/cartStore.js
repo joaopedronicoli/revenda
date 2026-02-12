@@ -5,7 +5,12 @@ import api from '../services/api'
 const loadCartFromStorage = () => {
     try {
         const stored = localStorage.getItem('revendedor-cart')
-        return stored ? JSON.parse(stored) : []
+        if (!stored) return []
+        const parsed = JSON.parse(stored)
+        // Sanitize: filter out items without valid tablePrice
+        return Array.isArray(parsed)
+            ? parsed.filter(item => item && typeof item.id !== 'undefined' && !isNaN(parseFloat(item.tablePrice)))
+            : []
     } catch (error) {
         console.error('Error loading cart from localStorage:', error)
         return []
@@ -131,6 +136,12 @@ export const useCartStore = create((set, get) => ({
     getSummary: () => {
         const { cart, userDiscount, selectedKit, isFirstOrder, commissionCredit } = get()
 
+        // Safe number helper - ensures we never get NaN
+        const safeNum = (val) => {
+            const n = parseFloat(val)
+            return isNaN(n) ? 0 : n
+        }
+
         // Constants
         const MODELAT_ID = 8
         const TEST_PRODUCT_ID = 999 // Produto de teste - sem desconto
@@ -142,23 +153,26 @@ export const useCartStore = create((set, get) => ({
         const MIN_ORDER_RECURRING = 600
         const minimumOrder = isFirstOrder ? MIN_ORDER_FIRST : MIN_ORDER_RECURRING
 
-        // Use dynamic discount from user level
-        const currentStandardDiscount = userDiscount
+        // Use dynamic discount from user level (default 0.30 if not set)
+        const currentStandardDiscount = safeNum(userDiscount) || 0.30
 
         // 1. Calculate Table Total (products only, no kit)
-        const totalTable = cart.reduce((acc, item) => acc + (item.tablePrice * item.quantity), 0)
+        const totalTable = cart.reduce((acc, item) => acc + (safeNum(item.tablePrice) * safeNum(item.quantity)), 0)
 
         // 2. Calculate Total with Discount
         let totalWithDiscount = 0
 
         cart.forEach(item => {
+            const price = safeNum(item.tablePrice)
+            const qty = safeNum(item.quantity)
+
             if (item.id === TEST_PRODUCT_ID) {
                 // Produto teste: sem desconto
-                totalWithDiscount += item.tablePrice * item.quantity
+                totalWithDiscount += price * qty
             } else if (item.id === MODELAT_ID) {
-                totalWithDiscount += (item.tablePrice * (1 - DISCOUNT_MODELAT)) * item.quantity
+                totalWithDiscount += (price * (1 - DISCOUNT_MODELAT)) * qty
             } else {
-                totalWithDiscount += (item.tablePrice * (1 - currentStandardDiscount)) * item.quantity
+                totalWithDiscount += (price * (1 - currentStandardDiscount)) * qty
             }
         })
 
@@ -166,12 +180,15 @@ export const useCartStore = create((set, get) => ({
         const productTotal = totalWithDiscount
 
         // 3. Add kit price if selected (first order only)
-        const kitPrice = (isFirstOrder && selectedKit) ? selectedKit.price : 0
+        const kitPrice = (isFirstOrder && selectedKit) ? safeNum(selectedKit.price) : 0
         totalWithDiscount += kitPrice
 
         // 4. Apply commission credit
-        const appliedCredit = Math.min(commissionCredit, totalWithDiscount)
+        const appliedCredit = Math.min(safeNum(commissionCredit), totalWithDiscount)
         totalWithDiscount -= appliedCredit
+
+        // Ensure total never goes negative
+        totalWithDiscount = Math.max(0, totalWithDiscount)
 
         // 5. Payment Calculations
         const pixDiscount = totalWithDiscount * PIX_DISCOUNT_RATE
@@ -197,7 +214,7 @@ export const useCartStore = create((set, get) => ({
             productTotal,
             kitPrice,
             appliedCredit,
-            itemCount: cart.reduce((acc, item) => acc + item.quantity, 0),
+            itemCount: cart.reduce((acc, item) => acc + safeNum(item.quantity), 0),
             discountStandard: currentStandardDiscount,
             discountModelat: DISCOUNT_MODELAT,
             maxInstallments,

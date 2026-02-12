@@ -12,7 +12,7 @@ require('dotenv').config();
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 
 // =============================================
 // CONSTANTES DE NIVEL
@@ -479,7 +479,7 @@ app.post('/users/me/request-approval', authenticateToken, async (req, res) => {
 });
 
 app.put('/users/me', authenticateToken, async (req, res) => {
-    const { name, telefone, foto } = req.body;
+    const { name, telefone, foto, document_type, cpf, cnpj, company_name, profession, profession_other } = req.body;
 
     try {
         const updates = [];
@@ -489,6 +489,12 @@ app.put('/users/me', authenticateToken, async (req, res) => {
         if (name !== undefined) { paramCount++; updates.push(`name = $${paramCount}`); values.push(name); }
         if (telefone !== undefined) { paramCount++; updates.push(`telefone = $${paramCount}`); values.push(telefone); }
         if (foto !== undefined) { paramCount++; updates.push(`foto = $${paramCount}`); values.push(foto); }
+        if (document_type !== undefined) { paramCount++; updates.push(`document_type = $${paramCount}`); values.push(document_type); }
+        if (cpf !== undefined) { paramCount++; updates.push(`cpf = $${paramCount}`); values.push(cpf); }
+        if (cnpj !== undefined) { paramCount++; updates.push(`cnpj = $${paramCount}`); values.push(cnpj); }
+        if (company_name !== undefined) { paramCount++; updates.push(`company_name = $${paramCount}`); values.push(company_name); }
+        if (profession !== undefined) { paramCount++; updates.push(`profession = $${paramCount}`); values.push(profession); }
+        if (profession_other !== undefined) { paramCount++; updates.push(`profession_other = $${paramCount}`); values.push(profession_other); }
 
         if (updates.length === 0) {
             return res.status(400).json({ message: 'Nenhum campo para atualizar' });
@@ -499,7 +505,7 @@ app.put('/users/me', authenticateToken, async (req, res) => {
         values.push(req.user.id);
 
         const { rows } = await db.query(
-            `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING id, name, email, role, telefone, foto, approval_status`,
+            `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING id, name, email, role, telefone, foto, document_type, cpf, cnpj, company_name, profession, profession_other, approval_status`,
             values
         );
 
@@ -1775,7 +1781,7 @@ app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (
 app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { rows } = await db.query(
-            `SELECT id, name, email, affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, commission_balance, referral_code, created_at
+            `SELECT id, name, email, telefone, affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, commission_balance, referral_code, created_at
              FROM users WHERE affiliate_type IS NOT NULL ORDER BY created_at DESC`
         );
         res.json(rows);
@@ -1800,6 +1806,52 @@ app.put('/admin/affiliates/:id/status', authenticateToken, requireAdmin, async (
         }
         console.error(err);
         res.status(500).json({ message: 'Erro ao atualizar afiliado' });
+    }
+});
+
+// Delete affiliate (remove affiliate status, keep user)
+app.delete('/admin/affiliates/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query(
+            'UPDATE users SET affiliate_type = NULL, affiliate_status = NULL, affiliate_level = NULL, updated_at = NOW() WHERE id = $1',
+            [req.params.id]
+        );
+        res.json({ message: 'Afiliado removido' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao remover afiliado' });
+    }
+});
+
+// Add existing user as affiliate
+app.post('/admin/affiliates/add-existing', authenticateToken, requireAdmin, async (req, res) => {
+    const { email, affiliate_type } = req.body;
+    if (!email || !affiliate_type) {
+        return res.status(400).json({ message: 'Email e tipo de afiliado sao obrigatorios' });
+    }
+    try {
+        const { rows } = await db.query('SELECT id, name, email, affiliate_type, referral_code FROM users WHERE email = $1', [email]);
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Usuario nao encontrado com esse email' });
+        }
+        const user = rows[0];
+        if (user.affiliate_type) {
+            return res.status(400).json({ message: 'Este usuario ja e afiliado' });
+        }
+        // Generate referral code if user doesn't have one
+        let referralCode = user.referral_code;
+        if (!referralCode) {
+            referralCode = generateReferralCode(user.name);
+        }
+        const { rows: updated } = await db.query(
+            `UPDATE users SET affiliate_type = $1, affiliate_status = 'active', referral_code = COALESCE(referral_code, $2), updated_at = NOW()
+             WHERE id = $3 RETURNING id, name, email, telefone, affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, commission_balance, referral_code`,
+            [affiliate_type, referralCode, user.id]
+        );
+        res.json(updated[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao adicionar afiliado' });
     }
 });
 
@@ -1939,14 +1991,37 @@ app.post('/admin/abandoned-carts/:id/recover', authenticateToken, requireAdmin, 
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Carrinho nao encontrado' });
 
-        // Mark recovery type as sent
+        const cart = rows[0];
+        const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
+        const link = recovery_link || `${frontendUrl}/?recover=${cart.id}`;
+
+        // Parse items for email content
+        let items = cart.items;
+        if (typeof items === 'string') {
+            try { items = JSON.parse(items); } catch { items = []; }
+        }
+        if (!Array.isArray(items)) items = [];
+
         if (type === 'email') {
+            if (!cart.user_email) {
+                return res.status(400).json({ message: 'Usuario nao possui email cadastrado' });
+            }
+            const result = await emailService.sendCartRecoveryEmail(
+                cart.user_email,
+                cart.user_name,
+                link,
+                items
+            );
+            if (!result.success) {
+                return res.status(500).json({ message: 'Erro ao enviar email: ' + (result.error || 'desconhecido') });
+            }
             await db.query('UPDATE abandoned_carts SET recovery_email_sent = true, updated_at = NOW() WHERE id = $1', [req.params.id]);
         } else if (type === 'whatsapp') {
+            // WhatsApp: mark as sent (actual sending depends on WhatsApp integration being configured)
             await db.query('UPDATE abandoned_carts SET recovery_whatsapp_sent = true, updated_at = NOW() WHERE id = $1', [req.params.id]);
         }
 
-        res.json({ message: 'Recuperacao enviada', cart: rows[0] });
+        res.json({ message: 'Recuperacao enviada', cart: cart });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao recuperar carrinho' });

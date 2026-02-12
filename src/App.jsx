@@ -147,6 +147,9 @@ export default function App() {
               </ProtectedRoute>
             } />
 
+            {/* Cart redirect (cart is shown on Dashboard) */}
+            <Route path="/cart" element={<Navigate to="/" replace />} />
+
             {/* Admin Routes */}
             <Route path="/admin/*" element={<AdminApp />} />
           </Routes>

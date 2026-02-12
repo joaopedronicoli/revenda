@@ -1167,25 +1167,28 @@ app.post('/orders', authenticateToken, async (req, res) => {
     try {
         // Buscar status do usuario
         const { rows: userRows } = await db.query(
-            'SELECT first_order_completed, has_purchased_kit, commission_balance FROM users WHERE id = $1',
+            'SELECT first_order_completed, has_purchased_kit, commission_balance, role FROM users WHERE id = $1',
             [req.user.id]
         );
         const userStatus = userRows[0];
         const isFirstOrder = !userStatus.first_order_completed;
+        const isAdmin = ['administrator', 'admin', 'manager'].includes(userStatus.role);
 
-        // Validar kit obrigatorio para primeiro pedido
-        if (isFirstOrder && !kit_id) {
+        // Validar kit obrigatorio para primeiro pedido (admin bypassa)
+        if (!isAdmin && isFirstOrder && !kit_id) {
             return res.status(400).json({ message: 'Kit obrigatorio para o primeiro pedido' });
         }
-        if (!isFirstOrder && kit_id) {
+        if (!isAdmin && !isFirstOrder && kit_id) {
             return res.status(400).json({ message: 'Kit disponivel apenas no primeiro pedido' });
         }
 
-        // Validar pedido minimo (total de produtos, sem kit)
+        // Validar pedido minimo - admin bypassa
         const productTotal = parseFloat(total) || 0;
-        const minOrder = isFirstOrder ? MIN_ORDER_FIRST : MIN_ORDER_RECURRING;
-        if (productTotal < minOrder) {
-            return res.status(400).json({ message: `Pedido minimo de R$${minOrder} em produtos` });
+        if (!isAdmin) {
+            const minOrder = isFirstOrder ? MIN_ORDER_FIRST : MIN_ORDER_RECURRING;
+            if (productTotal < minOrder) {
+                return res.status(400).json({ message: `Pedido minimo de R$${minOrder} em produtos` });
+            }
         }
 
         // Buscar kit se necessario

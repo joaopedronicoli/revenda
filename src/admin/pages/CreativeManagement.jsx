@@ -28,7 +28,7 @@ export default function CreativeManagement() {
         setLoading(true)
         try {
             const { data } = await api.get('/admin/creatives')
-            setCreatives(data || [])
+            setCreatives(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading creatives:', err)
             setCreatives([])

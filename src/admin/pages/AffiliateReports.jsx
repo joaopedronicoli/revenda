@@ -23,7 +23,7 @@ export default function AffiliateReports() {
     const loadAffiliatesList = async () => {
         try {
             const { data } = await api.get('/admin/affiliates')
-            setAffiliatesList(data || [])
+            setAffiliatesList(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading affiliates list:', err)
         }

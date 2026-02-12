@@ -42,7 +42,7 @@ export default function RecoveryTemplates() {
         setLoading(true)
         try {
             const { data } = await api.get('/admin/recovery-templates')
-            setTemplates(data || [])
+            setTemplates(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading templates:', err)
         } finally {

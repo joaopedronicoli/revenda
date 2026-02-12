@@ -31,8 +31,8 @@ export default function ResellerDashboard() {
                 api.get('/users/me/sales-history')
             ])
             setDashboard(dashRes.data)
-            setAchievements(achieveRes.data || [])
-            setRecentOrders(ordersRes.data || [])
+            setAchievements(Array.isArray(achieveRes.data) ? achieveRes.data : [])
+            setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : [])
         } catch (err) {
             console.error('Error loading dashboard:', err)
         } finally {

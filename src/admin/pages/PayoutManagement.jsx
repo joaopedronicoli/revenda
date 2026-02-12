@@ -39,7 +39,7 @@ export default function PayoutManagement() {
         try {
             const params = activeTab ? `?status=${activeTab}` : ''
             const { data } = await api.get(`/admin/payouts${params}`)
-            setPayouts(data || [])
+            setPayouts(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading payouts:', err)
             setPayouts([])

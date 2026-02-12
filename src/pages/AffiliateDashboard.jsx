@@ -63,9 +63,9 @@ export default function AffiliateDashboard() {
             ])
             if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
             if (clickRes.status === 'fulfilled') setClickStats(clickRes.value.data)
-            if (payoutRes.status === 'fulfilled') setPayoutHistory(payoutRes.value.data || [])
+            if (payoutRes.status === 'fulfilled') setPayoutHistory(Array.isArray(payoutRes.value.data) ? payoutRes.value.data : [])
             if (couponRes.status === 'fulfilled') setMyCoupon(couponRes.value.data)
-            if (creativesRes.status === 'fulfilled') setCreatives(creativesRes.value.data || [])
+            if (creativesRes.status === 'fulfilled') setCreatives(Array.isArray(creativesRes.value.data) ? creativesRes.value.data : [])
         } catch (err) {
             console.error('Error loading affiliate data:', err)
         } finally {
@@ -126,7 +126,7 @@ export default function AffiliateDashboard() {
                 api.get('/affiliate/payouts/history')
             ])
             if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
-            if (payoutRes.status === 'fulfilled') setPayoutHistory(payoutRes.value.data || [])
+            if (payoutRes.status === 'fulfilled') setPayoutHistory(Array.isArray(payoutRes.value.data) ? payoutRes.value.data : [])
         } catch (err) {
             setPayoutError(err.response?.data?.message || 'Erro ao solicitar saque')
         } finally {

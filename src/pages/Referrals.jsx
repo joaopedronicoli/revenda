@@ -30,7 +30,7 @@ export default function Referrals() {
                 api.get('/users/me/referrals'),
                 api.get('/users/me/commissions')
             ])
-            setReferrals(referralsRes.data || [])
+            setReferrals(Array.isArray(referralsRes.data) ? referralsRes.data : [])
             setCommissions(commissionsRes.data || { balance: 0, history: [] })
         } catch (err) {
             console.error('Error loading referrals:', err)

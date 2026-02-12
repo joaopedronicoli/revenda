@@ -53,7 +53,7 @@ export default function AffiliateManagement() {
         setLoading(true)
         try {
             const { data } = await api.get('/admin/affiliates')
-            setAffiliates(data || [])
+            setAffiliates(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading affiliates:', err)
             setAffiliates([])

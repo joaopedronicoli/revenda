@@ -52,7 +52,7 @@ export default function UsersManagement() {
             const params = { filter }
             if (levelFilter !== 'all') params.level = levelFilter
             const { data } = await api.get('/admin/users', { params })
-            setUsers(data || [])
+            setUsers(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading users:', err)
             setUsers([])
@@ -129,7 +129,7 @@ export default function UsersManagement() {
     const loadLevelHistory = async (userId) => {
         try {
             const { data } = await api.get(`/admin/level-history/${userId}`)
-            setLevelHistory(data || [])
+            setLevelHistory(Array.isArray(data) ? data : [])
             setShowLevelHistory(true)
         } catch (err) {
             console.error('Error loading level history:', err)

@@ -60,7 +60,7 @@ export default function AbandonedCarts() {
                 params.status = filter
             }
             const { data } = await api.get('/admin/abandoned-carts', { params })
-            setCarts(data || [])
+            setCarts(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading abandoned carts:', err)
         } finally {

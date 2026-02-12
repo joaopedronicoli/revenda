@@ -27,7 +27,7 @@ export default function WebhookSettings() {
         setLoading(true)
         try {
             const { data } = await api.get('/admin/webhook-configurations')
-            setWebhooks(data || [])
+            setWebhooks(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading webhooks:', err)
         } finally {

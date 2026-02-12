@@ -40,7 +40,7 @@ export default function ProductManagement() {
         setLoading(true)
         try {
             const { data } = await api.get('/admin/products')
-            setProducts(data || [])
+            setProducts(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading products:', err)
         } finally {

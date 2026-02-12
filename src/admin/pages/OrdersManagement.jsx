@@ -42,7 +42,8 @@ export default function OrdersManagement() {
 
             const { data } = await api.get('/admin/orders', { params })
 
-            const ordersData = data?.data || data || []
+            const raw = data?.data || data
+            const ordersData = Array.isArray(raw) ? raw : []
             console.log(`Loaded ${ordersData.length} orders for admin`)
             setOrders(ordersData)
         } catch (err) {

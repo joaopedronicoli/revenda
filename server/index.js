@@ -1517,57 +1517,57 @@ app.post('/orders', authenticateToken, async (req, res) => {
                     price: (item.tablePrice || item.price || 0).toString()
                 }));
 
-            if (lineItems.length > 0) {
-                const wcOrderData = {
-                    status: 'pending',
-                    billing: {
-                        first_name: enrichedDetails.user_name || 'Cliente',
-                        last_name: '',
-                        email: enrichedDetails.user_email || '',
-                        phone: enrichedDetails.user_whatsapp || '',
-                        address_1: addressData.street || '',
-                        address_2: addressData.complement || '',
-                        city: addressData.city || '',
-                        state: addressData.state || '',
-                        postcode: addressData.cep || '',
-                        country: 'BR'
-                    },
-                    shipping: {
-                        first_name: enrichedDetails.user_name || 'Cliente',
-                        last_name: '',
-                        address_1: addressData.street || '',
-                        address_2: addressData.complement || '',
-                        city: addressData.city || '',
-                        state: addressData.state || '',
-                        postcode: addressData.cep || '',
-                        country: 'BR'
-                    },
-                    line_items: lineItems,
-                    customer_note: `Pedido do App de Revenda: ${newOrder.id}`,
-                    shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
-                    meta_data: [
-                        { key: '_revenda_app_order_id', value: String(newOrder.id) },
-                        { key: '_payment_method_title', value: payment_method || 'Nao informado' },
-                        { key: '_billing_number', value: addressData.number || '' },
-                        { key: '_billing_neighborhood', value: addressData.neighborhood || '' },
-                        { key: '_billing_cpf', value: enrichedDetails.user_cpf || '' }
-                    ]
-                };
+            // Sempre criar pedido no WC, usando fee_lines como fallback se nao houver line_items
+            const wcOrderData = {
+                status: 'pending',
+                billing: {
+                    first_name: enrichedDetails.user_name || 'Cliente',
+                    last_name: '',
+                    email: enrichedDetails.user_email || '',
+                    phone: enrichedDetails.user_whatsapp || '',
+                    address_1: addressData.street || '',
+                    address_2: addressData.complement || '',
+                    city: addressData.city || '',
+                    state: addressData.state || '',
+                    postcode: addressData.cep || '',
+                    country: 'BR'
+                },
+                shipping: {
+                    first_name: enrichedDetails.user_name || 'Cliente',
+                    last_name: '',
+                    address_1: addressData.street || '',
+                    address_2: addressData.complement || '',
+                    city: addressData.city || '',
+                    state: addressData.state || '',
+                    postcode: addressData.cep || '',
+                    country: 'BR'
+                },
+                line_items: lineItems.length > 0 ? lineItems : [],
+                fee_lines: lineItems.length === 0 ? [{ name: 'Pedido Revenda App', total: finalTotal.toString() }] : [],
+                customer_note: `Pedido do App de Revenda: ${newOrder.id}`,
+                shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
+                meta_data: [
+                    { key: '_revenda_app_order_id', value: String(newOrder.id) },
+                    { key: '_payment_method_title', value: payment_method || 'Nao informado' },
+                    { key: '_billing_number', value: addressData.number || '' },
+                    { key: '_billing_neighborhood', value: addressData.neighborhood || '' },
+                    { key: '_billing_cpf', value: enrichedDetails.user_cpf || '' }
+                ]
+            };
 
-                const wcOrder = await woocommerceService.createOrder(wcOrderData);
+            const wcOrder = await woocommerceService.createOrder(wcOrderData);
 
-                // Atualizar pedido local com numero do WC
-                const { rows: updatedRows } = await db.query(
-                    `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
-                     tracking_url = $4, updated_at = NOW() WHERE id = $5 RETURNING *`,
-                    [String(wcOrder.number), String(wcOrder.id), String(wcOrder.number),
-                     `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
-                     newOrder.id]
-                );
+            // Atualizar pedido local com numero do WC
+            const { rows: updatedRows } = await db.query(
+                `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
+                 tracking_url = $4, updated_at = NOW() WHERE id = $5 RETURNING *`,
+                [String(wcOrder.number), String(wcOrder.id), String(wcOrder.number),
+                 `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
+                 newOrder.id]
+            );
 
-                console.log(`WC order created: #${wcOrder.number} for local order ${newOrder.id}`);
-                return res.status(201).json(updatedRows[0]);
-            }
+            console.log(`WC order created: #${wcOrder.number} for local order ${newOrder.id} (line_items: ${lineItems.length}, fee_lines: ${lineItems.length === 0 ? 1 : 0})`);
+            return res.status(201).json(updatedRows[0]);
         } catch (wcErr) {
             console.error('Erro ao criar pedido no WooCommerce (nao bloqueia):', wcErr.message);
             // Nao bloqueia - pedido local ja foi criado
@@ -1698,8 +1698,8 @@ app.post('/orders/:id/sync', authenticateToken, async (req, res) => {
             [statusLabel, order.id]
         );
 
-        // Se pago e pedido ainda pending -> marcar como paid + processar pos-pagamento
-        if (paymentStatus.status === 'paid' && order.status === 'pending') {
+        // Se pago e pedido ainda pending ou failed -> marcar como paid + processar pos-pagamento
+        if (paymentStatus.status === 'paid' && (order.status === 'pending' || order.status === 'failed')) {
             await db.query(
                 "UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1",
                 [order.id]
@@ -1721,11 +1721,54 @@ app.post('/orders/:id/sync', authenticateToken, async (req, res) => {
             return res.json({ synced: true, paid: true, order: updated[0] });
         }
 
+        // Se falho e pedido ainda pending -> marcar como failed
+        if (paymentStatus.status === 'failed' && order.status === 'pending') {
+            await db.query(
+                "UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1",
+                [order.id]
+            );
+            console.log(`Sync: pedido ${order.id} marcado como failed`);
+
+            if (order.woocommerce_order_id) {
+                woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'failed').catch(() => {});
+            }
+        }
+
         const { rows: updated } = await db.query('SELECT * FROM orders WHERE id = $1', [order.id]);
         res.json({ synced: true, paid: false, order: updated[0] });
     } catch (err) {
         console.error('Erro ao sincronizar pedido:', err);
         res.status(500).json({ message: 'Erro ao sincronizar pedido' });
+    }
+});
+
+// Retry payment — reset failed order back to pending
+app.put('/orders/:id/retry-payment', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            "SELECT * FROM orders WHERE id = $1 AND user_id = $2 AND status = 'failed'",
+            [req.params.id, req.user.id]
+        );
+        if (rows.length === 0) {
+            return res.status(404).json({ message: 'Pedido nao encontrado ou nao elegivel para nova tentativa' });
+        }
+
+        await db.query(
+            "UPDATE orders SET status = 'pending', updated_at = NOW() WHERE id = $1",
+            [req.params.id]
+        );
+
+        // Sync WC
+        if (rows[0].woocommerce_order_id) {
+            woocommerceService.updateOrderStatus(rows[0].woocommerce_order_id, 'pending').catch(() => {});
+        }
+
+        console.log(`Retry payment: pedido ${req.params.id} resetado para pending`);
+        const { rows: updated } = await db.query('SELECT * FROM orders WHERE id = $1', [req.params.id]);
+        res.json(updated[0]);
+    } catch (err) {
+        console.error('Erro ao resetar pedido para retry:', err.message);
+        res.status(500).json({ message: 'Erro ao processar nova tentativa' });
     }
 });
 
@@ -1813,6 +1856,21 @@ app.post('/payments/process', authenticateToken, async (req, res) => {
                     orderId
                 ]
             );
+
+            // Tratar pagamento recusado/falho
+            const resultStatus = (result.status || '').toString().toLowerCase();
+            if (resultStatus === 'failed' || resultStatus === 'declined' || resultStatus === 'recusado') {
+                await db.query(
+                    "UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1",
+                    [orderId]
+                );
+                console.log(`Payment process: pedido ${orderId} marcado como failed (status: ${resultStatus})`);
+
+                const orderCheck = await db.query('SELECT woocommerce_order_id FROM orders WHERE id = $1', [orderId]);
+                if (orderCheck.rows[0]?.woocommerce_order_id) {
+                    woocommerceService.updateOrderStatus(orderCheck.rows[0].woocommerce_order_id, 'failed').catch(() => {});
+                }
+            }
         }
 
         res.json(result);
@@ -3824,6 +3882,24 @@ app.post('/webhooks/ipag', async (req, res) => {
             }
         }
 
+        // Detectar pagamento recusado/falho
+        const isFailed = statusStr === 'recusado' || statusStr === 'failed' ||
+            statusStr === 'declined' || statusStr === '7';
+
+        if (isFailed && (order.status === 'pending' || order.status === 'failed')) {
+            await db.query(
+                "UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1",
+                [order.id]
+            );
+            console.log(`iPag Webhook: pedido ${order.id} marcado como failed (status: ${statusStr})`);
+
+            if (order.woocommerce_order_id) {
+                woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'failed').catch((e) => {
+                    console.error('Erro ao sincronizar WC failed via webhook:', e.message);
+                });
+            }
+        }
+
         res.sendStatus(200);
     } catch (err) {
         console.error('Erro ao processar webhook iPag:', err.message);
@@ -3835,12 +3911,44 @@ app.post('/webhooks/woocommerce', async (req, res) => {
     try {
         console.log('WooCommerce Webhook received:', JSON.stringify(req.body));
         const { id, number, status } = req.body;
+        if (!id) return res.sendStatus(200);
 
-        if (id) {
-            await db.query(
-                'UPDATE orders SET status = $1, woocommerce_order_id = $2, woocommerce_order_number = $3, updated_at = NOW() WHERE woocommerce_order_id = $2',
-                [status, String(id), String(number)]
-            );
+        // Mapear status WC -> status revenda
+        const STATUS_MAP = {
+            'pending': 'pending',
+            'processing': 'paid',
+            'on-hold': 'pending',
+            'completed': 'completed',
+            'cancelled': 'canceled',
+            'refunded': 'canceled',
+            'failed': 'failed'
+        };
+        const mappedStatus = STATUS_MAP[status] || status;
+
+        // Buscar pedido pelo woocommerce_order_id
+        const { rows } = await db.query(
+            'SELECT * FROM orders WHERE woocommerce_order_id = $1',
+            [String(id)]
+        );
+
+        if (rows.length === 0) {
+            console.warn(`WC Webhook: pedido nao encontrado para woocommerce_order_id=${id}`);
+            return res.sendStatus(200);
+        }
+        const order = rows[0];
+
+        // Atualizar status
+        await db.query(
+            'UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2',
+            [mappedStatus, order.id]
+        );
+        console.log(`WC Webhook: pedido ${order.id} status ${order.status} -> ${mappedStatus} (WC status: ${status})`);
+
+        // Se mudou para paid e antes era pending, rodar processPostPaymentLogic
+        if (mappedStatus === 'paid' && order.status === 'pending') {
+            const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+            console.log(`WC Webhook: pos-pagamento executado para pedido ${order.id}`);
         }
 
         res.sendStatus(200);
@@ -3887,6 +3995,22 @@ app.post('/webhooks/gateway/ipag', async (req, res) => {
 
             if (order.woocommerce_order_id) {
                 try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
+            }
+        }
+
+        // Detectar pagamento recusado/falho
+        const parsedStatusStr = (parsed.status || '').toString().toLowerCase();
+        const isGwFailed = parsedStatusStr === 'recusado' || parsedStatusStr === 'failed' ||
+            parsedStatusStr === 'declined' || parsedStatusStr === '7';
+
+        if (isGwFailed && (order.status === 'pending' || order.status === 'failed')) {
+            await db.query("UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1", [order.id]);
+            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como failed (status: ${parsedStatusStr})`);
+
+            if (order.woocommerce_order_id) {
+                woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'failed').catch((e) => {
+                    console.error('Erro ao sincronizar WC failed via gateway webhook:', e.message);
+                });
             }
         }
 
@@ -4763,3 +4887,25 @@ updateSchema()
             console.log(`Revenda API rodando na porta ${PORT} (sem setup completo)`);
         });
     });
+
+// =============================================
+// AUTO-CANCEL: pedidos pendentes apos 24h
+// =============================================
+setInterval(async () => {
+    try {
+        const { rows } = await db.query(
+            "UPDATE orders SET status = 'canceled', updated_at = NOW() WHERE status = 'pending' AND created_at < NOW() - INTERVAL '24 hours' RETURNING id, woocommerce_order_id"
+        );
+        for (const order of rows) {
+            if (order.woocommerce_order_id) {
+                woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'cancelled').catch(() => {});
+            }
+            dispatchWebhooks('order_canceled', { order_id: order.id, reason: 'auto_cancel_24h' }).catch(() => {});
+        }
+        if (rows.length > 0) {
+            console.log(`Auto-cancelados ${rows.length} pedidos pendentes (24h)`);
+        }
+    } catch (e) {
+        console.error('Erro auto-cancel:', e.message);
+    }
+}, 60 * 60 * 1000); // A cada 1 hora

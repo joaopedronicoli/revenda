@@ -56,6 +56,19 @@ export default function OrderReview() {
                         setOrderCreated(true)
                         setLoading(false)
                         return
+                    } else if (existingOrder && existingOrder.status === 'failed') {
+                        // Pedido falhou anteriormente, resetar para permitir nova tentativa
+                        console.log('Pedido falhou anteriormente, resetando para retry:', existingOrderId)
+                        try {
+                            await api.put(`/orders/${existingOrderId}/retry-payment`)
+                            setPaymentData({ orderId: existingOrderId, retrying: true })
+                            setOrderCreated(true)
+                            setLoading(false)
+                            return
+                        } catch (retryErr) {
+                            console.error('Erro ao resetar pedido falho:', retryErr)
+                            localStorage.removeItem('pendingOrderId')
+                        }
                     } else {
                         localStorage.removeItem('pendingOrderId')
                     }
@@ -93,7 +106,8 @@ export default function OrderReview() {
                             name: item.name,
                             quantity: item.quantity,
                             tablePrice: item.tablePrice,
-                            reference_url: item.reference_url
+                            reference_url: item.reference_url,
+                            woo_product_id: item.woo_product_id || null
                         })),
                         kit: selectedKit ? { id: selectedKit.id, name: selectedKit.name, price: selectedKit.price } : null,
                         summary: {
@@ -160,7 +174,8 @@ export default function OrderReview() {
                         name: item.name,
                         quantity: item.quantity,
                         tablePrice: item.tablePrice,
-                        reference_url: item.reference_url
+                        reference_url: item.reference_url,
+                        woo_product_id: item.woo_product_id || null
                     })),
                     kit: selectedKit ? { id: selectedKit.id, name: selectedKit.name, price: selectedKit.price } : null,
                     summary: {
@@ -552,6 +567,15 @@ export default function OrderReview() {
                                     </button>
                                 </div>
                             ) : paymentData?.orderId ? (
+                                <>
+                                {paymentData.retrying && (
+                                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2">
+                                        <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                                        <p className="text-sm text-amber-800">
+                                            Seu pagamento anterior falhou. Tente novamente com outro cartao ou metodo de pagamento.
+                                        </p>
+                                    </div>
+                                )}
                                 <PaymentSelector
                                     total={Math.round((parseFloat(summary.totalWithDiscount) || 0) * 100)} // Converter para centavos
                                     customer={{
@@ -566,6 +590,7 @@ export default function OrderReview() {
                                     state={selectedAddress?.state}
                                     gatewayInfo={gatewayInfo}
                                 />
+                                </>
                             ) : (
                                 <div className="text-center py-8 text-slate-600">
                                     {isFirstOrder && !selectedKit

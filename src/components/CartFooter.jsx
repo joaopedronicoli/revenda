@@ -12,7 +12,7 @@ const formatPrice = (price) => {
     }).format(isNaN(num) ? 0 : num)
 }
 
-const levelNames = { starter: 'Starter', prata: 'Prata', ouro: 'Ouro' }
+const levelNames = { bronze: 'Bronze', prata: 'Prata', ouro: 'Ouro' }
 
 export default function CartFooter() {
     const { getSummary, cart } = useCartStore()
@@ -28,7 +28,7 @@ export default function CartFooter() {
 
     if (itemCount === 0) return null
 
-    const userLevel = user?.level || 'starter'
+    const userLevel = user?.level || 'bronze'
 
     return (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-2xl z-40">
@@ -64,7 +64,7 @@ export default function CartFooter() {
                 {isApproved && (
                     <div className="flex items-center justify-center gap-2 mb-3 text-xs text-slate-500">
                         <Shield className="w-3.5 h-3.5" />
-                        <span>Nivel {levelNames[userLevel] || 'Starter'} - {((parseFloat(discountStandard) || 0) * 100).toFixed(0)}% de desconto</span>
+                        <span>Nivel {levelNames[userLevel] || 'Bronze'} - {((parseFloat(discountStandard) || 0) * 100).toFixed(0)}% de desconto</span>
                     </div>
                 )}
 

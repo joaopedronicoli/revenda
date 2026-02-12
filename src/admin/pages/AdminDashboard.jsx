@@ -87,7 +87,7 @@ export default function AdminDashboard() {
         users: { total: 0, pending: 0, approved: 0, newThisMonth: 0 },
         abandonedCarts: { count: 0, value: 0 },
         crm: { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 },
-        levelDistribution: { starter: 0, prata: 0, ouro: 0 }
+        levelDistribution: { bronze: 0, prata: 0, ouro: 0 }
     })
     const [recentOrders, setRecentOrders] = useState([])
     const [salesChart, setSalesChart] = useState([])
@@ -115,7 +115,7 @@ export default function AdminDashboard() {
                 users = { total: 0, pending: 0, approved: 0, newThisMonth: 0 },
                 abandonedCarts = { count: 0, value: 0 },
                 crm = { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 },
-                levelDistribution = { starter: 0, prata: 0, ouro: 0 },
+                levelDistribution = { bronze: 0, prata: 0, ouro: 0 },
                 recentOrders: recent = [],
                 salesChart: chart = [],
                 topCustomers: topCust = []
@@ -425,9 +425,9 @@ export default function AdminDashboard() {
             <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Distribuicao por Nivel</h3>
                 <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-4 bg-slate-50 rounded-lg">
-                        <p className="text-3xl font-bold text-slate-700">{metrics.levelDistribution.starter || 0}</p>
-                        <p className="text-sm text-slate-500 mt-1">Starter (30%)</p>
+                    <div className="text-center p-4 bg-amber-50 rounded-lg">
+                        <p className="text-3xl font-bold text-amber-800">{metrics.levelDistribution.bronze || 0}</p>
+                        <p className="text-sm text-slate-500 mt-1">Bronze (30%)</p>
                     </div>
                     <div className="text-center p-4 bg-slate-100 rounded-lg">
                         <p className="text-3xl font-bold text-slate-800">{metrics.levelDistribution.prata || 0}</p>

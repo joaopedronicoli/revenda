@@ -32,7 +32,7 @@ const updateSchema = async () => {
     // NOVAS COLUNAS - Programa de Revenda
     // =============================================
     const userColumns = [
-      { name: 'level', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS level VARCHAR(20) DEFAULT 'starter'" },
+      { name: 'level', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS level VARCHAR(20) DEFAULT 'bronze'" },
       { name: 'level_updated_at', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS level_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" },
       { name: 'last_purchase_date', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_purchase_date TIMESTAMP" },
       { name: 'total_accumulated', sql: "ALTER TABLE users ADD COLUMN IF NOT EXISTS total_accumulated DECIMAL(12,2) DEFAULT 0" },
@@ -68,6 +68,11 @@ const updateSchema = async () => {
       }
     }
     console.log('Colunas do programa de revenda adicionadas em "users".');
+
+    // Migrar starter -> bronze
+    await db.query("UPDATE users SET level = 'bronze' WHERE level = 'starter'");
+    await db.query("ALTER TABLE users ALTER COLUMN level SET DEFAULT 'bronze'");
+    console.log('Nivel starter migrado para bronze.');
 
     // Enderecos
     await db.query(`

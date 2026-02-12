@@ -27,7 +27,7 @@ export default function Layout({ children }) {
                         <div className="hidden sm:flex flex-col items-end text-sm">
                             <div className="flex items-center gap-2">
                                 <span className="text-slate-600 dark:text-slate-300">Ola, {user?.name || user?.email}</span>
-                                <LevelBadge level={user?.level || 'starter'} size="sm" />
+                                <LevelBadge level={user?.level || 'bronze'} size="sm" />
                             </div>
                             <span className="text-primary dark:text-blue-400 font-medium">
                                 Carrinho: {summary.itemCount} itens

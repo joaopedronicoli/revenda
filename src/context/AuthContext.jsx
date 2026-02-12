@@ -11,7 +11,7 @@ export const useAuth = () => useContext(AuthContext)
 const AUTH_KEY = 'auth_revenda'
 
 const LEVEL_DISCOUNTS = {
-    starter: 0.30,
+    bronze: 0.30,
     prata: 0.35,
     ouro: 0.40
 }
@@ -56,7 +56,7 @@ const mergeLocalUser = (fullUser, localUser) => {
         role: localUser.role || fullUser.role,
         approval_status: localUser.approval_status,
         rejection_reason: localUser.rejection_reason,
-        level: localUser.level || 'starter',
+        level: localUser.level || 'bronze',
         commission_balance: parseFloat(localUser.commission_balance) || 0,
         referral_code: localUser.referral_code,
         has_purchased_kit: localUser.has_purchased_kit,

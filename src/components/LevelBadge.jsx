@@ -1,13 +1,13 @@
 import { Shield } from 'lucide-react'
 
 const levelStyles = {
-    starter: { bg: 'bg-slate-100', text: 'text-slate-700', label: 'Starter', discount: '30%' },
+    bronze:  { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Bronze', discount: '30%' },
     prata:   { bg: 'bg-slate-200', text: 'text-slate-800', label: 'Prata', discount: '35%' },
     ouro:    { bg: 'bg-yellow-100', text: 'text-yellow-800', label: 'Ouro', discount: '40%' }
 }
 
-export default function LevelBadge({ level = 'starter', showDiscount = false, size = 'sm' }) {
-    const style = levelStyles[level] || levelStyles.starter
+export default function LevelBadge({ level = 'bronze', showDiscount = false, size = 'sm' }) {
+    const style = levelStyles[level] || levelStyles.bronze
 
     const sizeClasses = size === 'sm'
         ? 'text-xs px-2 py-0.5 gap-1'

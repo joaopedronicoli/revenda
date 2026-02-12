@@ -19,7 +19,7 @@ app.use(express.json({ limit: '15mb' }));
 // =============================================
 
 const LEVEL_CONFIG = {
-    starter: { discount: 0.30, name: 'Starter', minAccumulated: 0 },
+    bronze:  { discount: 0.30, name: 'Bronze', minAccumulated: 0 },
     prata:   { discount: 0.35, name: 'Prata', minAccumulated: 5000 },
     ouro:    { discount: 0.40, name: 'Ouro', minAccumulated: 10000 }
 };
@@ -136,7 +136,7 @@ async function recalculateUserLevel(userId) {
     );
     const activeReferrals = parseInt(refResult.rows[0].cnt);
 
-    let newLevel = 'starter';
+    let newLevel = 'bronze';
     const accumulated = parseFloat(user.total_accumulated) || 0;
     const quarterAcc = parseFloat(user.quarter_accumulated) || 0;
 
@@ -359,7 +359,7 @@ app.get('/users/me', authenticateToken, async (req, res) => {
             if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
             // Add defaults for missing columns
             const user = rows[0];
-            user.level = 'starter';
+            user.level = 'bronze';
             user.commission_balance = 0;
             user.referral_code = null;
             user.has_purchased_kit = false;
@@ -388,14 +388,14 @@ app.get('/users/me/level', authenticateToken, async (req, res) => {
         if (rows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
 
         const user = rows[0];
-        const currentLevel = user.level || 'starter';
+        const currentLevel = user.level || 'bronze';
         const config = LEVEL_CONFIG[currentLevel];
 
         let nextLevel = null;
         let progressPercent = 100;
         let amountToNext = 0;
 
-        if (currentLevel === 'starter') {
+        if (currentLevel === 'bronze') {
             nextLevel = 'prata';
             amountToNext = Math.max(0, 5000 - (parseFloat(user.total_accumulated) || 0));
             progressPercent = Math.min(100, ((parseFloat(user.total_accumulated) || 0) / 5000) * 100);
@@ -429,8 +429,8 @@ app.get('/users/me/level', authenticateToken, async (req, res) => {
         // Columns may not exist yet
         if (err.message && err.message.includes('does not exist')) {
             return res.json({
-                level: 'starter',
-                levelName: 'Starter',
+                level: 'bronze',
+                levelName: 'Bronze',
                 discount: 0.30,
                 totalAccumulated: 0,
                 quarterAccumulated: 0,
@@ -889,7 +889,7 @@ app.get('/users/me/dashboard', authenticateToken, async (req, res) => {
         const user = userResult.rows[0];
         res.json({
             level: user.level,
-            levelDiscount: LEVEL_CONFIG[user.level || 'starter'].discount,
+            levelDiscount: LEVEL_CONFIG[user.level || 'bronze'].discount,
             points: user.points,
             commissionBalance: parseFloat(user.commission_balance) || 0,
             totalAccumulated: parseFloat(user.total_accumulated) || 0,
@@ -905,7 +905,7 @@ app.get('/users/me/dashboard', authenticateToken, async (req, res) => {
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
             return res.json({
-                level: 'starter', levelDiscount: 0.30, points: 0, commissionBalance: 0,
+                level: 'bronze', levelDiscount: 0.30, points: 0, commissionBalance: 0,
                 totalAccumulated: 0, referralCode: null, totalOrders: 0, totalSales: 0,
                 monthOrders: 0, monthSales: 0, totalCommissions: 0, activeReferrals: 0, achievementsEarned: 0
             });
@@ -1491,14 +1491,14 @@ app.post('/cron/check-levels', async (req, res) => {
         // Downgrade por inatividade (90 dias sem compra)
         const { rows: inactiveUsers } = await db.query(`
             SELECT id, level, last_purchase_date FROM users
-            WHERE level != 'starter'
+            WHERE level != 'bronze'
             AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
         `);
 
         for (const user of inactiveUsers) {
             let newLevel;
             if (user.level === 'ouro') newLevel = 'prata';
-            else if (user.level === 'prata') newLevel = 'starter';
+            else if (user.level === 'prata') newLevel = 'bronze';
             else continue;
 
             await db.query('UPDATE users SET level = $1, level_updated_at = NOW() WHERE id = $2', [newLevel, user.id]);
@@ -1508,10 +1508,10 @@ app.post('/cron/check-levels', async (req, res) => {
             );
         }
 
-        // Suspender starters inativos
+        // Suspender bronzes inativos
         await db.query(`
             UPDATE users SET approval_status = 'suspended'
-            WHERE level = 'starter' AND approval_status = 'approved'
+            WHERE level = 'bronze' AND approval_status = 'approved'
             AND last_purchase_date IS NOT NULL
             AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
         `);
@@ -1565,7 +1565,7 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
         ]);
 
         const levelDistribution = {};
-        levelStats.rows.forEach(r => { levelDistribution[r.level || 'starter'] = parseInt(r.cnt); });
+        levelStats.rows.forEach(r => { levelDistribution[r.level || 'bronze'] = parseInt(r.cnt); });
 
         res.json({
             totalUsers: parseInt(usersCount.rows[0].total),

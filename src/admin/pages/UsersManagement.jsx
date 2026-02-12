@@ -18,7 +18,7 @@ const approvalConfig = {
 }
 
 const levelConfig = {
-    starter: { label: 'Starter', color: 'bg-slate-100 text-slate-700', discount: '30%' },
+    bronze: { label: 'Bronze', color: 'bg-amber-100 text-amber-800', discount: '30%' },
     prata: { label: 'Prata', color: 'bg-slate-200 text-slate-800', discount: '35%' },
     ouro: { label: 'Ouro', color: 'bg-yellow-100 text-yellow-800', discount: '40%' }
 }
@@ -175,7 +175,7 @@ export default function UsersManagement() {
 
     const levelFilterButtons = [
         { key: 'all', label: 'Todos Niveis' },
-        { key: 'starter', label: 'Starter' },
+        { key: 'bronze', label: 'Bronze' },
         { key: 'prata', label: 'Prata' },
         { key: 'ouro', label: 'Ouro' }
     ]
@@ -277,7 +277,7 @@ export default function UsersManagement() {
                                     const ApprovalIcon = approval.icon
                                     const role = user.role || 'client'
                                     const roleInfo = roleConfig[role] || roleConfig.client
-                                    const level = levelConfig[user.level] || levelConfig.starter
+                                    const level = levelConfig[user.level] || levelConfig.bronze
                                     return (
                                         <tr key={user.id} className="hover:bg-slate-50">
                                             <td className="px-6 py-4">
@@ -396,9 +396,9 @@ export default function UsersManagement() {
                                             <button
                                                 key={key}
                                                 onClick={() => setPendingLevel(key)}
-                                                disabled={updating || (selectedUser.level || 'starter') === key}
+                                                disabled={updating || (selectedUser.level || 'bronze') === key}
                                                 className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 text-sm ${
-                                                    (selectedUser.level || 'starter') === key
+                                                    (selectedUser.level || 'bronze') === key
                                                         ? 'bg-slate-800 text-white'
                                                         : pendingLevel === key
                                                         ? 'bg-amber-100 text-amber-800 ring-2 ring-amber-400'
@@ -414,7 +414,7 @@ export default function UsersManagement() {
                                     {pendingLevel && (
                                         <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
                                             <p className="text-sm text-amber-800 mb-3">
-                                                Alterar nivel de <strong>{levelConfig[selectedUser.level || 'starter']?.label}</strong> para <strong>{levelConfig[pendingLevel]?.label}</strong>?
+                                                Alterar nivel de <strong>{levelConfig[selectedUser.level || 'bronze']?.label}</strong> para <strong>{levelConfig[pendingLevel]?.label}</strong>?
                                             </p>
                                             <div className="flex gap-2">
                                                 <button

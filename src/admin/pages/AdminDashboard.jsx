@@ -551,7 +551,7 @@ export default function AdminDashboard() {
                                 return (
                                     <tr key={order.id} className="hover:bg-slate-50">
                                         <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                                            {order.order_number || `#${order.id.slice(0, 8)}`}
+                                            {order.order_number || `#${order.id}`}
                                         </td>
                                         <td className="px-6 py-4 text-sm text-slate-500">
                                             {new Date(order.created_at).toLocaleDateString('pt-BR')}

@@ -215,7 +215,7 @@ export default function OrderHistory() {
                                         <div className="flex items-center gap-2 mb-1">
                                             <Package size={18} className="text-primary" />
                                             <h3 className="font-semibold text-slate-900">
-                                                Pedido #{order.order_number || order.id.slice(0, 8)}
+                                                Pedido #{order.order_number || order.id}
                                             </h3>
                                         </div>
                                         <p className="text-sm text-slate-600">

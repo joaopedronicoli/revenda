@@ -160,7 +160,7 @@ export default function OrdersManagement() {
                                         <tr key={order.id} className="hover:bg-slate-50">
                                             <td className="px-6 py-4">
                                                 <p className="text-sm font-medium text-slate-900">
-                                                    {order.order_number || `#${order.id.slice(0, 8)}`}
+                                                    {order.order_number || `#${order.id}`}
                                                 </p>
                                                 {order.tracking_code && (
                                                     <p className="text-xs text-slate-500">
@@ -222,7 +222,7 @@ export default function OrdersManagement() {
                         <div className="p-6 border-b border-slate-200">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold text-slate-900">
-                                    Pedido {selectedOrder.order_number || `#${selectedOrder.id.slice(0, 8)}`}
+                                    Pedido {selectedOrder.order_number || `#${selectedOrder.id}`}
                                 </h2>
                                 <button
                                     onClick={() => setSelectedOrder(null)}

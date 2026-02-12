@@ -247,7 +247,7 @@ export default function CleanupDuplicates() {
                                                 <div className="grid grid-cols-2 gap-4 text-sm mt-3">
                                                     <div>
                                                         <span className="text-slate-500">ID:</span>
-                                                        <p className="font-mono text-slate-900">{order.id.slice(0, 13)}...</p>
+                                                        <p className="font-mono text-slate-900">{order.id}</p>
                                                     </div>
                                                     <div>
                                                         <span className="text-slate-500">Transaction ID:</span>

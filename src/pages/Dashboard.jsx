@@ -26,7 +26,7 @@ export default function Dashboard() {
     useEffect(() => {
         api.get('/products')
             .then(({ data }) => {
-                if (data && data.length > 0) {
+                if (Array.isArray(data) && data.length > 0) {
                     setProducts(data.map(mapProduct))
                 }
             })

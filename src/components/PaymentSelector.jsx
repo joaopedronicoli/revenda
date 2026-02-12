@@ -8,7 +8,8 @@ import api from '../services/api'
 
 export default function PaymentSelector({ total, customer, orderId, onPaymentSuccess, onPaymentError, state, gatewayInfo }) {
     const navigate = useNavigate()
-    const availableMethods = gatewayInfo?.availableMethods || ['credit_card', 'pix']
+    const rawMethods = gatewayInfo?.availableMethods
+    const availableMethods = Array.isArray(rawMethods) && rawMethods.length > 0 ? rawMethods : ['credit_card', 'pix']
     const hasCreditCard = availableMethods.includes('credit_card')
     const hasPix = availableMethods.includes('pix')
     const defaultMethod = hasCreditCard ? 'credit_card' : 'pix'
@@ -49,7 +50,7 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
             }
 
             // Buscar order_number do banco
-            const { data: { data: orderData } } = await api.get(`/orders/${orderId}`)
+            const { data: orderData } = await api.get(`/orders/${orderId}`)
 
             if (result.status === 'approved' || result.status === 'paid') {
                 setCreditCardSuccess({

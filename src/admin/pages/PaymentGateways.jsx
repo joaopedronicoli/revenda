@@ -32,12 +32,15 @@ export default function PaymentGateways() {
                 api.get('/admin/payment-gateways'),
                 api.get('/admin/gateway-types')
             ])
-            setCompanies(companiesRes.data)
-            setGateways(gatewaysRes.data)
-            setGatewayTypes(typesRes.data)
+            const companiesList = Array.isArray(companiesRes.data) ? companiesRes.data : []
+            const gatewaysList = Array.isArray(gatewaysRes.data) ? gatewaysRes.data : []
+            const typesObj = typesRes.data && typeof typesRes.data === 'object' && !Array.isArray(typesRes.data) ? typesRes.data : {}
+            setCompanies(companiesList)
+            setGateways(gatewaysList)
+            setGatewayTypes(typesObj)
 
-            if (companiesRes.data.length > 0 && !expandedCompany) {
-                setExpandedCompany(companiesRes.data[0].id)
+            if (companiesList.length > 0 && !expandedCompany) {
+                setExpandedCompany(companiesList[0].id)
             }
         } catch (err) {
             setError('Erro ao carregar dados: ' + err.message)

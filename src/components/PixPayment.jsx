@@ -68,7 +68,7 @@ export default function PixPayment({ pixData, orderId, onPaymentConfirmed, gatew
             await api.post(`/orders/${orderId}/sync`).catch(() => { })
 
             // Verificar no banco
-            const { data: { data } } = await api.get(`/orders/${orderId}`)
+            const { data } = await api.get(`/orders/${orderId}`)
 
             const successStatuses = ['approved', 'paid', 'capturado', 'succeeded', 'sucesso', 'pago', '5', '8']
             const ipagStatus = (data?.ipag_status || data?.gateway_status || '').toLowerCase()

@@ -510,6 +510,17 @@ app.put('/users/me', authenticateToken, async (req, res) => {
     }
 });
 
+// DELETE account (self)
+app.delete('/users/me', authenticateToken, async (req, res) => {
+    try {
+        await db.query('DELETE FROM users WHERE id = $1', [req.user.id]);
+        res.json({ message: 'Conta excluida com sucesso' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao excluir conta' });
+    }
+});
+
 // =============================================
 // KITS ROUTES
 // =============================================

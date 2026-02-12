@@ -17,10 +17,11 @@ import ResellerDashboard from './pages/ResellerDashboard'
 import AffiliateRegister from './pages/AffiliateRegister'
 import AffiliateDashboard from './pages/AffiliateDashboard'
 import Layout from './components/Layout'
+import CompleteProfile from './pages/CompleteProfile'
 import AdminApp from './admin/AdminApp'
 
-const ProtectedRoute = ({ children, allowPending = false, allowUnverified = false }) => {
-  const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified } = useAuth()
+const ProtectedRoute = ({ children, allowPending = false, allowUnverified = false, allowIncomplete = false }) => {
+  const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified, isProfileComplete } = useAuth()
 
   if (loading || roleLoading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>
 
@@ -29,7 +30,12 @@ const ProtectedRoute = ({ children, allowPending = false, allowUnverified = fals
   // Allow admins to bypass all checks
   if (canAccessAdmin) return children
 
-  // Check email verification first
+  // Check profile completeness (document_type must exist)
+  if (!allowIncomplete && !isProfileComplete) {
+    return <Navigate to="/complete-profile" />
+  }
+
+  // Check email verification
   if (!allowUnverified && !isEmailVerified) {
     return <Navigate to="/pending-verification" />
   }
@@ -52,6 +58,12 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+
+            <Route path="/complete-profile" element={
+              <ProtectedRoute allowPending={true} allowUnverified={true} allowIncomplete={true}>
+                <CompleteProfile />
+              </ProtectedRoute>
+            } />
 
             <Route path="/pending-verification" element={
               <ProtectedRoute allowPending={true} allowUnverified={true}>

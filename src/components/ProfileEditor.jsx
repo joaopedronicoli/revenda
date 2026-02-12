@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Camera, Save, AlertCircle, CheckCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Camera, Save, AlertCircle, CheckCircle, Trash2 } from 'lucide-react'
 import { uploadAvatar, getAvatarUrl } from '../lib/database'
 import api from '../services/api'
 import SecurityVerificationModal from './SecurityVerificationModal'
 
 export default function ProfileEditor() {
-    const { user } = useAuth()
+    const { user, logout } = useAuth()
+    const navigate = useNavigate()
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState(null)
     const [avatarUrl, setAvatarUrl] = useState(null)
     const [showVerification, setShowVerification] = useState(false)
     const [verificationType, setVerificationType] = useState(null)
     const [pendingValue, setPendingValue] = useState('')
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+    const [deleteLoading, setDeleteLoading] = useState(false)
+    const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
     const [formData, setFormData] = useState({
         name: user?.name || '',
@@ -133,6 +138,20 @@ export default function ProfileEditor() {
             setMessage({ type: 'error', text: 'Erro ao atualizar perfil.' })
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleDeleteAccount = async () => {
+        setDeleteLoading(true)
+        try {
+            await api.delete('/users/me')
+            await logout()
+            navigate('/login')
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Erro ao excluir conta. Tente novamente.' })
+            setShowDeleteConfirm(false)
+        } finally {
+            setDeleteLoading(false)
         }
     }
 
@@ -290,6 +309,61 @@ export default function ProfileEditor() {
                     </button>
                 </form>
             </div>
+
+            {/* Delete Account */}
+            <div className="mt-8 pt-8 border-t border-red-200">
+                <h4 className="text-sm font-semibold text-red-600 mb-2">Zona de Perigo</h4>
+                <p className="text-xs text-slate-500 mb-4">
+                    Ao excluir sua conta, todos os seus dados, pedidos e endereços serão removidos permanentemente.
+                </p>
+                <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="flex items-center gap-2 px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm"
+                >
+                    <Trash2 size={16} />
+                    Excluir minha conta
+                </button>
+            </div>
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+                        <h3 className="text-lg font-bold text-red-600 mb-2">Excluir Conta</h3>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Esta ação é irreversível. Todos os seus dados serão excluídos permanentemente.
+                        </p>
+                        <p className="text-sm text-slate-700 mb-3">
+                            Digite <strong>EXCLUIR</strong> para confirmar:
+                        </p>
+                        <input
+                            type="text"
+                            value={deleteConfirmText}
+                            onChange={(e) => setDeleteConfirmText(e.target.value)}
+                            className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none mb-4"
+                            placeholder="EXCLUIR"
+                        />
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => { setShowDeleteConfirm(false); setDeleteConfirmText('') }}
+                                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteAccount}
+                                disabled={deleteConfirmText !== 'EXCLUIR' || deleteLoading}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {deleteLoading ? 'Excluindo...' : 'Confirmar Exclusão'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Verification Modal */}
             {showVerification && (

@@ -45,7 +45,13 @@ const mergeLocalUser = (fullUser, localUser) => {
         total_accumulated: parseFloat(localUser.total_accumulated) || 0,
         affiliate_type: localUser.affiliate_type,
         affiliate_status: localUser.affiliate_status,
-        email_verified: localUser.email_verified !== undefined ? localUser.email_verified : true
+        email_verified: localUser.email_verified !== undefined ? localUser.email_verified : true,
+        document_type: localUser.document_type || fullUser.document_type,
+        cpf: localUser.cpf || fullUser.cpf,
+        cnpj: localUser.cnpj || fullUser.cnpj,
+        company_name: localUser.company_name || fullUser.company_name,
+        profession: localUser.profession || fullUser.profession,
+        telefone: localUser.telefone || fullUser.telefone,
     }
 
     // Set cart store discount based on user level
@@ -295,6 +301,7 @@ export const AuthProvider = ({ children }) => {
     const canAccessAdmin = useMemo(() => ['administrator', 'admin', 'manager'].includes(userRole), [userRole])
     const isApproved = useMemo(() => approvalStatus === 'approved', [approvalStatus])
     const isEmailVerified = useMemo(() => user?.email_verified !== false, [user?.email_verified])
+    const isProfileComplete = useMemo(() => !!user?.document_type, [user?.document_type])
 
     // Aliases for backward compatibility
     const refreshRole = refreshUser
@@ -310,6 +317,7 @@ export const AuthProvider = ({ children }) => {
             canAccessAdmin,
             isApproved,
             isEmailVerified,
+            isProfileComplete,
             login,
             register,
             loginWithGoogle,

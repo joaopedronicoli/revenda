@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const axios = require('axios');
 const db = require('./db');
 const ipagService = require('./ipagService');
 const woocommerceService = require('./woocommerceService');
@@ -3056,11 +3057,12 @@ const INTEGRATION_TYPES = {
     },
     bling: {
         name: 'Bling ERP',
-        description: 'Integracao com Bling para gestao de estoque e notas fiscais',
+        description: 'Integracao com Bling via OAuth2',
         testable: true,
+        oauth: true,
         credentialFields: [
-            { key: 'api_key', label: 'API Key (Bearer Token)', type: 'password' },
-            { key: 'api_url', label: 'API URL', type: 'text', placeholder: 'https://www.bling.com.br/Api/v3' }
+            { key: 'client_id', label: 'Client ID', type: 'text' },
+            { key: 'client_secret', label: 'Client Secret', type: 'password' }
         ]
     },
     meta: {
@@ -3087,7 +3089,9 @@ const INTEGRATION_TYPES = {
 // Helper: mascarar credenciais
 function maskCredentials(creds) {
     const masked = {};
+    const hideKeys = ['oauth_state']; // campos internos que nao devem aparecer
     for (const [key, value] of Object.entries(creds || {})) {
+        if (hideKeys.includes(key)) continue;
         if (typeof value === 'string' && value.length > 8) {
             masked[key] = '****' + value.slice(-4);
         } else if (typeof value === 'string' && value.length > 0) {
@@ -3108,11 +3112,31 @@ app.get('/admin/integration-types', authenticateToken, requireAdmin, async (req,
 app.get('/admin/integrations', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { rows } = await db.query('SELECT * FROM integrations ORDER BY integration_type');
-        const masked = rows.map(row => ({
-            ...row,
-            credentials_masked: maskCredentials(row.credentials),
-            credentials: undefined
-        }));
+        const masked = rows.map(row => {
+            const item = {
+                ...row,
+                credentials_masked: maskCredentials(row.credentials),
+                credentials: undefined
+            };
+            // Incluir status OAuth para bling
+            if (row.integration_type === 'bling') {
+                const creds = row.credentials || {};
+                const typeInfo = INTEGRATION_TYPES.bling;
+                item.oauth = typeInfo.oauth;
+                if (creds.access_token) {
+                    const expiresAt = creds.token_expires_at ? new Date(creds.token_expires_at) : null;
+                    const now = new Date();
+                    item.oauth_status = {
+                        authorized: true,
+                        token_expires_at: creds.token_expires_at || null,
+                        expired: expiresAt ? expiresAt <= now : false
+                    };
+                } else {
+                    item.oauth_status = { authorized: false };
+                }
+            }
+            return item;
+        });
         res.json(masked);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -3195,6 +3219,136 @@ app.delete('/admin/integrations/:type', authenticateToken, requireAdmin, async (
     }
 });
 
+// =============================================
+// BLING OAuth2 — authorize, callback, refresh
+// =============================================
+
+const BLING_REDIRECT_URI = `${process.env.FRONTEND_URL || 'https://revenda.pelg.com.br'}/admin/integrations/bling/callback`;
+
+// Helper: refresh token do Bling e salvar no DB
+async function refreshBlingToken(integrationType) {
+    const { rows } = await db.query(
+        'SELECT credentials FROM integrations WHERE integration_type = $1', [integrationType]
+    );
+    if (rows.length === 0) throw new Error('Integracao Bling nao encontrada');
+    const creds = rows[0].credentials || {};
+    if (!creds.refresh_token || !creds.client_id || !creds.client_secret) {
+        throw new Error('Credenciais incompletas para refresh');
+    }
+
+    const basicAuth = Buffer.from(`${creds.client_id}:${creds.client_secret}`).toString('base64');
+    const resp = await axios.post('https://www.bling.com.br/Api/v3/oauth/token',
+        new URLSearchParams({ grant_type: 'refresh_token', refresh_token: creds.refresh_token }).toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${basicAuth}` } }
+    );
+
+    const { access_token, refresh_token, expires_in } = resp.data;
+    const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000)).toISOString();
+
+    await db.query(
+        `UPDATE integrations SET credentials = credentials || $1, updated_at = NOW() WHERE integration_type = $2`,
+        [JSON.stringify({ access_token, refresh_token, token_expires_at: tokenExpiresAt }), integrationType]
+    );
+
+    return access_token;
+}
+
+// GET /admin/integrations/bling/authorize — gerar URL OAuth
+app.get('/admin/integrations/bling/authorize', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'bling'");
+        if (rows.length === 0) return res.status(400).json({ error: 'Configure o Client ID e Client Secret primeiro' });
+
+        const creds = rows[0].credentials || {};
+        if (!creds.client_id) return res.status(400).json({ error: 'Client ID nao configurado' });
+
+        // Gerar state CSRF
+        const state = crypto.randomBytes(16).toString('hex');
+        await db.query(
+            `UPDATE integrations SET credentials = credentials || $1, updated_at = NOW() WHERE integration_type = 'bling'`,
+            [JSON.stringify({ oauth_state: state })]
+        );
+
+        const url = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${encodeURIComponent(creds.client_id)}&state=${state}&redirect_uri=${encodeURIComponent(BLING_REDIRECT_URI)}`;
+        res.json({ url });
+    } catch (err) {
+        console.error('Erro ao gerar URL Bling OAuth:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /admin/integrations/bling/callback — receber code do Bling
+app.get('/admin/integrations/bling/callback', async (req, res) => {
+    const { code, state, error } = req.query;
+
+    if (error) {
+        return res.status(400).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro na autorizacao Bling</h1>
+            <p>${String(error).replace(/</g, '&lt;')}</p>
+            <script>setTimeout(() => window.close(), 3000);</script>
+            </body></html>
+        `);
+    }
+
+    if (!code) {
+        return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Codigo de autorizacao nao fornecido</h1></body></html>');
+    }
+
+    try {
+        // Validar state CSRF
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'bling'");
+        if (rows.length === 0) throw new Error('Integracao Bling nao encontrada');
+
+        const creds = rows[0].credentials || {};
+        if (creds.oauth_state && state !== creds.oauth_state) {
+            return res.status(400).send(`
+                <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+                <h1 style="color:#dc2626">Erro: state invalido</h1>
+                <p>Possivel tentativa de CSRF. Tente autorizar novamente.</p>
+                </body></html>
+            `);
+        }
+
+        if (!creds.client_id || !creds.client_secret) throw new Error('Client ID e Client Secret nao configurados');
+
+        // Trocar code por tokens
+        const basicAuth = Buffer.from(`${creds.client_id}:${creds.client_secret}`).toString('base64');
+        const tokenResp = await axios.post('https://www.bling.com.br/Api/v3/oauth/token',
+            new URLSearchParams({ grant_type: 'authorization_code', code }).toString(),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${basicAuth}` } }
+        );
+
+        const { access_token, refresh_token, expires_in } = tokenResp.data;
+        const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000)).toISOString();
+
+        // Salvar tokens e limpar oauth_state
+        await db.query(
+            `UPDATE integrations SET credentials = (credentials - 'oauth_state') || $1, updated_at = NOW() WHERE integration_type = 'bling'`,
+            [JSON.stringify({ access_token, refresh_token, token_expires_at: tokenExpiresAt })]
+        );
+
+        res.send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#16a34a">Bling autorizado com sucesso!</h1>
+            <p>Pode fechar esta aba. A pagina de conexoes sera atualizada automaticamente.</p>
+            <script>
+                if (window.opener) { window.opener.postMessage('bling-oauth-success', '*'); }
+                setTimeout(() => window.close(), 3000);
+            </script>
+            </body></html>
+        `);
+    } catch (err) {
+        console.error('Erro callback Bling OAuth:', err.message);
+        res.status(500).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro ao conectar Bling</h1>
+            <p>${String(err.message).replace(/</g, '&lt;')}</p>
+            </body></html>
+        `);
+    }
+});
+
 // POST /admin/integrations/:type/test — testar conexao
 app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -3230,12 +3384,25 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
                 break;
             }
             case 'bling': {
-                const apiUrl = creds.api_url || 'https://www.bling.com.br/Api/v3';
-                const resp = await axios.get(`${apiUrl}/contatos?limite=1`, {
-                    headers: { Authorization: `Bearer ${creds.api_key}` },
+                let accessToken = creds.access_token;
+                if (!accessToken) {
+                    testResult = { success: false, message: 'Bling nao autorizado. Clique em "Autorizar no Bling".' };
+                    break;
+                }
+                // Refresh automatico se expirado
+                if (creds.token_expires_at && new Date(creds.token_expires_at) < new Date()) {
+                    try {
+                        accessToken = await refreshBlingToken(req.params.type);
+                    } catch (refreshErr) {
+                        testResult = { success: false, message: 'Token expirado e refresh falhou. Reautorize.' };
+                        break;
+                    }
+                }
+                const resp = await axios.get('https://www.bling.com.br/Api/v3/contatos?limite=1', {
+                    headers: { Authorization: `Bearer ${accessToken}` },
                     timeout: 10000
                 });
-                testResult = { success: true, message: 'Bling conectado com sucesso!' };
+                testResult = { success: true, message: 'Bling conectado via OAuth2!' };
                 break;
             }
             case 'meta': {

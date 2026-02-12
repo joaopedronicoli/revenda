@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug, ExternalLink, Loader2 } from 'lucide-react'
 import api from '../../services/api'
 
 const TYPE_ICONS = {
@@ -38,10 +38,10 @@ const FALLBACK_TYPES = {
         ]
     },
     bling: {
-        name: 'Bling ERP', description: 'Integracao com Bling para gestao de estoque e notas fiscais', testable: true,
+        name: 'Bling ERP', description: 'Integracao com Bling via OAuth2', testable: true, oauth: true,
         credentialFields: [
-            { key: 'api_key', label: 'API Key (Bearer Token)', type: 'password' },
-            { key: 'api_url', label: 'API URL', type: 'text', placeholder: 'https://www.bling.com.br/Api/v3' }
+            { key: 'client_id', label: 'Client ID', type: 'text' },
+            { key: 'client_secret', label: 'Client Secret', type: 'password' }
         ]
     },
     meta: {
@@ -68,10 +68,23 @@ export default function Connections() {
     const [editingType, setEditingType] = useState(null)
     const [testResult, setTestResult] = useState(null)
     const [testingType, setTestingType] = useState(null)
+    const [authorizingType, setAuthorizingType] = useState(null)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
 
     useEffect(() => { loadData() }, [])
+
+    // Escutar mensagem do popup OAuth do Bling
+    useEffect(() => {
+        const handler = (event) => {
+            if (event.data === 'bling-oauth-success') {
+                flashSuccess('Bling autorizado com sucesso!')
+                loadData()
+            }
+        }
+        window.addEventListener('message', handler)
+        return () => window.removeEventListener('message', handler)
+    }, [])
 
     const loadData = async () => {
         try {
@@ -137,6 +150,34 @@ export default function Connections() {
         } finally {
             setTestingType(null)
         }
+    }
+
+    const handleAuthorize = async (type) => {
+        setAuthorizingType(type)
+        try {
+            const { data } = await api.get(`/admin/integrations/${type}/authorize`)
+            if (data.url) {
+                window.open(data.url, '_blank', 'width=600,height=700')
+            } else {
+                throw new Error(data.error || 'URL nao retornada')
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || err.message || 'Erro ao autorizar')
+        } finally {
+            setAuthorizingType(null)
+        }
+    }
+
+    const formatExpiry = (isoDate) => {
+        if (!isoDate) return null
+        const date = new Date(isoDate)
+        const now = new Date()
+        const diff = date.getTime() - now.getTime()
+        if (diff <= 0) return 'Expirado'
+        const hours = Math.floor(diff / (1000 * 60 * 60))
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+        if (hours > 0) return `Expira em ${hours}h${minutes}m`
+        return `Expira em ${minutes}m`
     }
 
     // ==========================================
@@ -259,6 +300,9 @@ export default function Connections() {
                     const colors = TYPE_COLORS[type] || { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200' }
                     const lastTest = integration?.last_test_result
                     const lastTestedAt = integration?.last_tested_at
+                    const isOAuth = typeInfo.oauth || integration?.oauth
+                    const oauthStatus = integration?.oauth_status
+                    const oauthOk = oauthStatus?.authorized && !oauthStatus?.expired
 
                     return (
                         <div key={type} className={`bg-white rounded-xl border ${isConfigured ? (isActive ? 'border-slate-200' : 'border-red-200') : 'border-dashed border-slate-300'} overflow-hidden`}>
@@ -269,7 +313,7 @@ export default function Connections() {
                                             <Icon className={`w-6 h-6 ${colors.text}`} />
                                         </div>
                                         <div>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 <h3 className="font-semibold text-slate-900">{typeInfo.name}</h3>
                                                 {isConfigured && isActive && (
                                                     <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full font-medium">Ativo</span>
@@ -280,13 +324,40 @@ export default function Connections() {
                                                 {!isConfigured && (
                                                     <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-full font-medium">Nao configurado</span>
                                                 )}
+                                                {isConfigured && isOAuth && (
+                                                    <span className={`px-2 py-0.5 text-xs rounded-full font-medium flex items-center gap-1 ${
+                                                        oauthOk ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                                                    }`}>
+                                                        {oauthOk ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                                                        {oauthOk ? 'OAuth OK' : 'Nao autorizado'}
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-sm text-slate-500 mt-0.5">{typeInfo.description}</p>
+                                            {isConfigured && isOAuth && oauthStatus?.token_expires_at && (
+                                                <p className={`text-xs mt-1 ${oauthStatus.expired ? 'text-red-500' : 'text-green-600'}`}>
+                                                    Token: {formatExpiry(oauthStatus.token_expires_at)}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
                                         {isConfigured && (
                                             <>
+                                                {isOAuth && (
+                                                    <button
+                                                        onClick={() => handleAuthorize(type)}
+                                                        disabled={authorizingType === type}
+                                                        className="p-2 text-orange-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                                                        title="Autorizar no Bling"
+                                                    >
+                                                        {authorizingType === type ? (
+                                                            <Loader2 size={16} className="animate-spin" />
+                                                        ) : (
+                                                            <ExternalLink size={16} />
+                                                        )}
+                                                    </button>
+                                                )}
                                                 {typeInfo.testable && (
                                                     <button
                                                         onClick={() => handleTestConnection(type)}

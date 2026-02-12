@@ -59,6 +59,8 @@ export default function Register() {
         if (ref) {
             setFormData(prev => ({ ...prev, referralCode: ref }))
             validateReferralCode(ref)
+            // Track visit from referral link
+            api.post('/referral/track-visit', { referralCode: ref, pageUrl: window.location.href }).catch(() => {})
         }
     }, [searchParams])
 
@@ -290,6 +292,11 @@ export default function Register() {
                 }
             } catch (webhookError) {
                 console.error('Webhook notification failed:', webhookError)
+            }
+
+            // Mark conversion if referral code was used
+            if (formData.referralCode) {
+                api.post('/referral/mark-conversion', { referralCode: formData.referralCode, referredUserId: user?.id }).catch(() => {})
             }
 
             navigate('/login', { state: { showVerificationMessage: true } })

@@ -14,6 +14,9 @@ import Documentation from './pages/Documentation'
 import CleanupDuplicates from './pages/CleanupDuplicates'
 import AffiliateManagement from './pages/AffiliateManagement'
 import ProductManagement from './pages/ProductManagement'
+import PayoutManagement from './pages/PayoutManagement'
+import AffiliateReports from './pages/AffiliateReports'
+import CreativeManagement from './pages/CreativeManagement'
 
 // Admin Protected Route
 function AdminProtectedRoute({ children, adminOnly = false }) {
@@ -60,6 +63,21 @@ export default function AdminApp() {
                     <Route path="affiliates" element={
                         <AdminProtectedRoute adminOnly>
                             <AffiliateManagement />
+                        </AdminProtectedRoute>
+                    } />
+                    <Route path="payouts" element={
+                        <AdminProtectedRoute adminOnly>
+                            <PayoutManagement />
+                        </AdminProtectedRoute>
+                    } />
+                    <Route path="affiliate-reports" element={
+                        <AdminProtectedRoute adminOnly>
+                            <AffiliateReports />
+                        </AdminProtectedRoute>
+                    } />
+                    <Route path="creatives" element={
+                        <AdminProtectedRoute adminOnly>
+                            <CreativeManagement />
                         </AdminProtectedRoute>
                     } />
                     <Route

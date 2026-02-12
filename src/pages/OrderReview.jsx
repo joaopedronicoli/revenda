@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cartStore'
 import { getAddresses, getDefaultAddress } from '../lib/database'
 import api from '../services/api'
-import { MapPin, Edit2, Plus, Package, Truck, AlertCircle, X, Clock, Wallet, Gift } from 'lucide-react'
+import { MapPin, Edit2, Plus, Package, Truck, AlertCircle, X, Clock, Wallet, Gift, Tag } from 'lucide-react'
 import PaymentSelector from '../components/PaymentSelector'
 import { getDeliveryEstimate, getEstimatedDeliveryDate } from '../lib/deliveryEstimates'
 import KitSelector from '../components/KitSelector'
@@ -20,6 +20,10 @@ export default function OrderReview() {
     const [error, setError] = useState(null)
     const [orderCreated, setOrderCreated] = useState(false)
     const [creditInput, setCreditInput] = useState('')
+    const [couponCode, setCouponCode] = useState('')
+    const [couponResult, setCouponResult] = useState(null)
+    const [couponLoading, setCouponLoading] = useState(false)
+    const [couponError, setCouponError] = useState('')
 
     const isFirstOrder = !user?.first_order_completed
     const userCommissionBalance = user?.commission_balance || 0
@@ -192,6 +196,32 @@ export default function OrderReview() {
         const maxCredit = Math.min(amount, userCommissionBalance)
         setCommissionCredit(maxCredit)
         setCreditInput('')
+    }
+
+    const handleApplyCoupon = async () => {
+        if (!couponCode.trim()) return
+        setCouponLoading(true)
+        setCouponError('')
+        setCouponResult(null)
+        try {
+            const total = getSummary().totalWithDiscount
+            const { data } = await api.post('/coupons/validate', { code: couponCode, orderTotal: total })
+            if (data.valid) {
+                setCouponResult(data)
+            } else {
+                setCouponError(data.message || 'Cupom invalido')
+            }
+        } catch (err) {
+            setCouponError('Erro ao validar cupom')
+        } finally {
+            setCouponLoading(false)
+        }
+    }
+
+    const removeCoupon = () => {
+        setCouponResult(null)
+        setCouponCode('')
+        setCouponError('')
     }
 
     const handlePaymentSuccess = (paymentResult) => {
@@ -400,6 +430,52 @@ export default function OrderReview() {
                             </div>
                         </div>
 
+                        {/* Coupon Section */}
+                        <div className="bg-white rounded-xl p-6 border border-slate-200">
+                            <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                <Tag size={20} className="text-primary" />
+                                Cupom de Desconto
+                            </h2>
+                            {couponResult ? (
+                                <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                                    <div>
+                                        <span className="text-sm font-medium text-green-800">
+                                            Cupom <strong>{couponCode.toUpperCase()}</strong> aplicado!
+                                        </span>
+                                        <p className="text-xs text-green-700 mt-0.5">
+                                            Desconto: {formatCurrency(couponResult.discountAmount)}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={removeCoupon}
+                                        className="text-sm text-red-500 hover:text-red-700"
+                                    >
+                                        Remover
+                                    </button>
+                                </div>
+                            ) : (
+                                <div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={couponCode}
+                                            onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                                            placeholder="Digite o codigo do cupom"
+                                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary uppercase"
+                                        />
+                                        <button
+                                            onClick={handleApplyCoupon}
+                                            disabled={couponLoading || !couponCode.trim()}
+                                            className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                                        >
+                                            {couponLoading ? 'Validando...' : 'Aplicar'}
+                                        </button>
+                                    </div>
+                                    {couponError && <p className="text-xs text-red-500 mt-2">{couponError}</p>}
+                                </div>
+                            )}
+                        </div>
+
                         {/* Commission Credit Section */}
                         {userCommissionBalance > 0 && (
                             <div className="bg-white rounded-xl p-6 border border-slate-200">
@@ -547,6 +623,17 @@ export default function OrderReview() {
                                         <span className="text-slate-600">Credito Comissao</span>
                                         <span className="font-medium text-green-600">
                                             -{formatCurrency(summary.appliedCredit)}
+                                        </span>
+                                    </div>
+                                )}
+                                {couponResult && (
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-600 flex items-center gap-1">
+                                            <Tag size={14} />
+                                            Cupom {couponCode}
+                                        </span>
+                                        <span className="font-medium text-green-600">
+                                            -{formatCurrency(couponResult.discountAmount)}
                                         </span>
                                     </div>
                                 )}

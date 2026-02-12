@@ -12,7 +12,10 @@ import {
     ChevronLeft,
     ShoppingBag,
     Book,
-    UserCheck
+    UserCheck,
+    Wallet,
+    BarChart3,
+    Image
 } from 'lucide-react'
 
 const menuItems = [
@@ -47,6 +50,24 @@ const menuItems = [
         title: 'Afiliados',
         icon: UserCheck,
         path: '/admin/affiliates',
+        adminOnly: true
+    },
+    {
+        title: 'Saques',
+        icon: Wallet,
+        path: '/admin/payouts',
+        adminOnly: true
+    },
+    {
+        title: 'Relatorios',
+        icon: BarChart3,
+        path: '/admin/affiliate-reports',
+        adminOnly: true
+    },
+    {
+        title: 'Materiais',
+        icon: Image,
+        path: '/admin/creatives',
         adminOnly: true
     },
     {

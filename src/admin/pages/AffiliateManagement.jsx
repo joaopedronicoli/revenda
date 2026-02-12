@@ -229,6 +229,7 @@ export default function AffiliateManagement() {
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Codigo / Link</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Tipo</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vendas</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliques</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comissao</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
@@ -297,6 +298,9 @@ export default function AffiliateManagement() {
                                             </td>
                                             <td className="px-4 py-4 text-sm text-slate-600">
                                                 {affiliate.affiliate_sales_count || 0}
+                                            </td>
+                                            <td className="px-4 py-4 text-sm text-slate-600">
+                                                {affiliate.total_clicks || 0}
                                             </td>
                                             <td className="px-4 py-4">
                                                 <div className="flex items-center gap-1 text-sm font-medium text-slate-900">

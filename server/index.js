@@ -280,6 +280,14 @@ async function creditReferralCommission(orderId, buyerUserId, orderTotal) {
         [amount, referrerId]
     );
 
+    // Email: notificar afiliado sobre comissao
+    try {
+        const { rows: referrerRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [referrerId]);
+        if (referrerRows.length > 0) {
+            emailService.sendCommissionEarnedEmail(referrerRows[0].email, referrerRows[0].name, amount, orderId).catch(() => {});
+        }
+    } catch (e) { /* fire-and-forget */ }
+
     // Award points for commission
     await db.query(
         'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
@@ -648,6 +656,62 @@ app.get('/referral/validate/:code', async (req, res) => {
         }
         console.error(err);
         res.status(500).json({ message: 'Erro ao validar codigo' });
+    }
+});
+
+// =============================================
+// REFERRAL TRACKING (Public)
+// =============================================
+
+// Track visit from referral link
+app.post('/referral/track-visit', async (req, res) => {
+    try {
+        const { referralCode, pageUrl } = req.body;
+        if (!referralCode) return res.status(400).json({ message: 'referralCode obrigatorio' });
+
+        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+        const userAgent = req.headers['user-agent'] || '';
+
+        // Deduplicate: ignore same IP + code within 24h
+        const { rows: recent } = await db.query(
+            `SELECT id FROM affiliate_visits WHERE referral_code = $1 AND ip_address = $2 AND created_at > NOW() - INTERVAL '24 hours'`,
+            [referralCode.toUpperCase(), ip]
+        );
+        if (recent.length > 0) return res.json({ tracked: false, reason: 'duplicate' });
+
+        // Find affiliate user
+        const { rows: affRows } = await db.query('SELECT id FROM users WHERE referral_code = $1', [referralCode.toUpperCase()]);
+        const affiliateUserId = affRows.length > 0 ? affRows[0].id : null;
+
+        await db.query(
+            'INSERT INTO affiliate_visits (affiliate_user_id, referral_code, ip_address, user_agent, page_url) VALUES ($1, $2, $3, $4, $5)',
+            [affiliateUserId, referralCode.toUpperCase(), ip, userAgent, pageUrl || '']
+        );
+        res.json({ tracked: true });
+    } catch (err) {
+        console.error('Erro ao rastrear visita:', err);
+        res.json({ tracked: false });
+    }
+});
+
+// Mark visit as converted when user registers
+app.post('/referral/mark-conversion', async (req, res) => {
+    try {
+        const { referralCode, referredUserId } = req.body;
+        if (!referralCode) return res.json({ converted: false });
+
+        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.ip;
+
+        await db.query(
+            `UPDATE affiliate_visits SET converted = true, referred_user_id = $1
+             WHERE referral_code = $2 AND ip_address = $3 AND converted = false
+             ORDER BY created_at DESC LIMIT 1`,
+            [referredUserId || null, referralCode.toUpperCase(), ip]
+        );
+        res.json({ converted: true });
+    } catch (err) {
+        console.error('Erro ao marcar conversao:', err);
+        res.json({ converted: false });
     }
 });
 
@@ -1291,10 +1355,51 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
             await creditReferralCommission(order.id, order.user_id, orderTotal);
 
             // Ativar indicacao se for primeiro pedido
-            await db.query(
-                "UPDATE referrals SET status = 'active', activated_at = NOW() WHERE referred_id = $1 AND status = 'pending'",
+            const activatedRef = await db.query(
+                "UPDATE referrals SET status = 'active', activated_at = NOW() WHERE referred_id = $1 AND status = 'pending' RETURNING referrer_id",
                 [order.user_id]
             );
+
+            // Email: notificar referrer sobre nova indicacao ativa
+            if (activatedRef.rows.length > 0) {
+                try {
+                    const refId = activatedRef.rows[0].referrer_id;
+                    const { rows: refUser } = await db.query('SELECT email, name FROM users WHERE id = $1', [refId]);
+                    const { rows: buyerUser } = await db.query('SELECT name FROM users WHERE id = $1', [order.user_id]);
+                    if (refUser.length > 0) {
+                        emailService.sendNewReferralEmail(refUser[0].email, refUser[0].name, buyerUser[0]?.name || 'novo usuario').catch(() => {});
+                    }
+                } catch (e) { /* fire-and-forget */ }
+            }
+
+            // Coupon integration: se pedido tem cupom, creditar comissao ao afiliado do cupom
+            try {
+                const couponCode = order.details?.coupon_code;
+                if (couponCode) {
+                    const { rows: couponRows } = await db.query(
+                        "SELECT id, affiliate_user_id, discount_type, discount_value FROM affiliate_coupons WHERE code = $1 AND active = true",
+                        [couponCode]
+                    );
+                    if (couponRows.length > 0) {
+                        const coupon = couponRows[0];
+                        // Incrementar uso do cupom
+                        await db.query('UPDATE affiliate_coupons SET current_uses = current_uses + 1 WHERE id = $1', [coupon.id]);
+                        // Creditar comissao ao afiliado do cupom (5% do pedido)
+                        const couponCommission = orderTotal * 0.05;
+                        if (couponCommission > 0 && coupon.affiliate_user_id) {
+                            await db.query(
+                                `INSERT INTO commissions (user_id, source_user_id, order_id, type, amount, rate, status, credited_at)
+                                 VALUES ($1, $2, $3, 'coupon', $4, 0.05, 'credited', NOW())`,
+                                [coupon.affiliate_user_id, order.user_id, order.id, couponCommission]
+                            );
+                            await db.query(
+                                'UPDATE users SET commission_balance = commission_balance + $1 WHERE id = $2',
+                                [couponCommission, coupon.affiliate_user_id]
+                            );
+                        }
+                    }
+                }
+            } catch (e) { console.error('Erro ao processar cupom:', e); }
 
             // Recalcular nivel
             await recalculateUserLevel(order.user_id);
@@ -1873,8 +1978,9 @@ app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (
 app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { rows } = await db.query(
-            `SELECT id, name, email, telefone, affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, commission_balance, referral_code, created_at
-             FROM users WHERE affiliate_type IS NOT NULL ORDER BY created_at DESC`
+            `SELECT u.id, u.name, u.email, u.telefone, u.affiliate_type, u.affiliate_status, u.affiliate_level, u.affiliate_sales_count, u.commission_balance, u.referral_code, u.created_at,
+             (SELECT COUNT(*) FROM affiliate_visits WHERE affiliate_user_id = u.id) as total_clicks
+             FROM users u WHERE u.affiliate_type IS NOT NULL ORDER BY u.created_at DESC`
         );
         res.json(rows);
     } catch (err) {
@@ -2674,6 +2780,483 @@ app.post('/auth/verify-otp', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao verificar codigo' });
+    }
+});
+
+// =============================================
+// AFFILIATE CLICK STATS
+// =============================================
+
+app.get('/affiliate/click-stats', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { rows: totalRows } = await db.query(
+            'SELECT COUNT(*) as total FROM affiliate_visits WHERE affiliate_user_id = $1', [userId]
+        );
+        const { rows: uniqueRows } = await db.query(
+            'SELECT COUNT(DISTINCT ip_address) as total FROM affiliate_visits WHERE affiliate_user_id = $1', [userId]
+        );
+        const { rows: convRows } = await db.query(
+            'SELECT COUNT(*) as total FROM affiliate_visits WHERE affiliate_user_id = $1 AND converted = true', [userId]
+        );
+        const totalClicks = parseInt(totalRows[0].total);
+        const uniqueClicks = parseInt(uniqueRows[0].total);
+        const conversions = parseInt(convRows[0].total);
+        const conversionRate = totalClicks > 0 ? ((conversions / totalClicks) * 100).toFixed(1) : '0.0';
+
+        res.json({ totalClicks, uniqueClicks, conversions, conversionRate });
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json({ totalClicks: 0, uniqueClicks: 0, conversions: 0, conversionRate: '0.0' });
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar estatisticas de cliques' });
+    }
+});
+
+// =============================================
+// PAYOUT SYSTEM
+// =============================================
+
+// User: Request payout
+app.post('/affiliate/payouts/request', authenticateToken, async (req, res) => {
+    try {
+        const { amount, pixKey } = req.body;
+        const userId = req.user.id;
+
+        if (!amount || !pixKey) return res.status(400).json({ message: 'Valor e chave PIX sao obrigatorios' });
+
+        const parsedAmount = parseFloat(amount);
+        if (isNaN(parsedAmount) || parsedAmount <= 0) return res.status(400).json({ message: 'Valor invalido' });
+
+        // Check min payout
+        const { rows: settingsRows } = await db.query("SELECT value FROM app_settings WHERE key = 'min_payout_amount'");
+        const minPayout = settingsRows.length > 0 ? parseFloat(settingsRows[0].value) : 50;
+        if (parsedAmount < minPayout) return res.status(400).json({ message: `Valor minimo para saque: R$ ${minPayout.toFixed(2)}` });
+
+        // Check balance
+        const { rows: userRows } = await db.query('SELECT commission_balance FROM users WHERE id = $1', [userId]);
+        if (userRows.length === 0) return res.status(404).json({ message: 'Usuario nao encontrado' });
+        const balance = parseFloat(userRows[0].commission_balance) || 0;
+        if (balance < parsedAmount) return res.status(400).json({ message: `Saldo insuficiente. Seu saldo: R$ ${balance.toFixed(2)}` });
+
+        // Check pending payout
+        const { rows: pendingRows } = await db.query(
+            "SELECT id FROM payouts WHERE user_id = $1 AND status = 'pending'", [userId]
+        );
+        if (pendingRows.length > 0) return res.status(400).json({ message: 'Voce ja tem um saque pendente. Aguarde o processamento.' });
+
+        // Deduct balance and create payout
+        await db.query('UPDATE users SET commission_balance = commission_balance - $1 WHERE id = $2', [parsedAmount, userId]);
+        const { rows: payoutRows } = await db.query(
+            'INSERT INTO payouts (user_id, amount, pix_key, method) VALUES ($1, $2, $3, $4) RETURNING *',
+            [userId, parsedAmount, pixKey, 'pix']
+        );
+
+        res.json(payoutRows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao solicitar saque' });
+    }
+});
+
+// User: Payout history
+app.get('/affiliate/payouts/history', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT * FROM payouts WHERE user_id = $1 ORDER BY requested_at DESC',
+            [req.user.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar historico de saques' });
+    }
+});
+
+// Admin: List all payouts
+app.get('/admin/payouts', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { status } = req.query;
+        let query = `SELECT p.*, u.name as user_name, u.email as user_email
+                     FROM payouts p JOIN users u ON p.user_id = u.id`;
+        const params = [];
+        if (status) {
+            query += ' WHERE p.status = $1';
+            params.push(status);
+        }
+        query += ' ORDER BY p.requested_at DESC';
+        const { rows } = await db.query(query, params);
+        res.json(rows);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao listar saques' });
+    }
+});
+
+// Admin: Process payout (approve/reject/pay)
+app.put('/admin/payouts/:id/process', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { action, notes } = req.body;
+        const payoutId = req.params.id;
+
+        const { rows: payoutRows } = await db.query('SELECT * FROM payouts WHERE id = $1', [payoutId]);
+        if (payoutRows.length === 0) return res.status(404).json({ message: 'Saque nao encontrado' });
+
+        const payout = payoutRows[0];
+        const { rows: userRows } = await db.query('SELECT email, name FROM users WHERE id = $1', [payout.user_id]);
+        const userEmail = userRows[0]?.email;
+        const userName = userRows[0]?.name;
+
+        if (action === 'approve') {
+            await db.query(
+                "UPDATE payouts SET status = 'approved', admin_notes = $1, processed_at = NOW(), processed_by = $2 WHERE id = $3",
+                [notes || null, req.user.id, payoutId]
+            );
+            if (userEmail) emailService.sendPayoutApprovedEmail(userEmail, userName, payout.amount).catch(() => {});
+        } else if (action === 'reject') {
+            // Refund balance
+            await db.query('UPDATE users SET commission_balance = commission_balance + $1 WHERE id = $2', [payout.amount, payout.user_id]);
+            await db.query(
+                "UPDATE payouts SET status = 'rejected', admin_notes = $1, processed_at = NOW(), processed_by = $2 WHERE id = $3",
+                [notes || null, req.user.id, payoutId]
+            );
+            if (userEmail) emailService.sendPayoutRejectedEmail(userEmail, userName, notes).catch(() => {});
+        } else if (action === 'pay') {
+            await db.query(
+                "UPDATE payouts SET status = 'paid', admin_notes = $1, processed_at = NOW(), processed_by = $2 WHERE id = $3",
+                [notes || null, req.user.id, payoutId]
+            );
+            if (userEmail) emailService.sendPayoutPaidEmail(userEmail, userName, payout.amount).catch(() => {});
+        } else {
+            return res.status(400).json({ message: 'Acao invalida. Use: approve, reject ou pay' });
+        }
+
+        const { rows: updated } = await db.query('SELECT * FROM payouts WHERE id = $1', [payoutId]);
+        res.json(updated[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao processar saque' });
+    }
+});
+
+// =============================================
+// CREATIVES (Materials)
+// =============================================
+
+// Admin: List all creatives
+app.get('/admin/creatives', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM affiliate_creatives ORDER BY sort_order ASC, created_at DESC');
+        res.json(rows);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao listar criativos' });
+    }
+});
+
+// Admin: Create creative
+app.post('/admin/creatives', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { title, description, type, fileUrl, dimensions, active, sortOrder } = req.body;
+        if (!title || !fileUrl) return res.status(400).json({ message: 'Titulo e URL do arquivo sao obrigatorios' });
+
+        const { rows } = await db.query(
+            'INSERT INTO affiliate_creatives (title, description, type, file_url, dimensions, active, sort_order) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [title, description || null, type || 'image', fileUrl, dimensions || null, active !== false, sortOrder || 0]
+        );
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao criar criativo' });
+    }
+});
+
+// Admin: Update creative
+app.put('/admin/creatives/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { title, description, type, fileUrl, dimensions, active, sortOrder } = req.body;
+        const { rows } = await db.query(
+            `UPDATE affiliate_creatives SET
+                title = COALESCE($1, title), description = COALESCE($2, description),
+                type = COALESCE($3, type), file_url = COALESCE($4, file_url),
+                dimensions = COALESCE($5, dimensions), active = COALESCE($6, active),
+                sort_order = COALESCE($7, sort_order)
+             WHERE id = $8 RETURNING *`,
+            [title, description, type, fileUrl, dimensions, active, sortOrder, req.params.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Criativo nao encontrado' });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao atualizar criativo' });
+    }
+});
+
+// Admin: Delete creative
+app.delete('/admin/creatives/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query('DELETE FROM affiliate_creatives WHERE id = $1', [req.params.id]);
+        res.json({ message: 'Criativo removido' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao remover criativo' });
+    }
+});
+
+// Affiliate: List active creatives
+app.get('/affiliate/creatives', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM affiliate_creatives WHERE active = true ORDER BY sort_order ASC, created_at DESC');
+        res.json(rows);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao listar materiais' });
+    }
+});
+
+// =============================================
+// AFFILIATE REPORTS (Admin)
+// =============================================
+
+app.get('/admin/affiliate-reports', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { startDate, endDate, affiliateId } = req.query;
+
+        let dateFilter = '';
+        const params = [];
+        let paramIdx = 0;
+
+        if (startDate) {
+            paramIdx++;
+            dateFilter += ` AND av.created_at >= $${paramIdx}`;
+            params.push(startDate);
+        }
+        if (endDate) {
+            paramIdx++;
+            dateFilter += ` AND av.created_at <= $${paramIdx}::date + INTERVAL '1 day'`;
+            params.push(endDate);
+        }
+
+        let affiliateFilter = '';
+        if (affiliateId) {
+            paramIdx++;
+            affiliateFilter = ` AND u.id = $${paramIdx}`;
+            params.push(affiliateId);
+        }
+
+        const query = `
+            SELECT u.id, u.name, u.email,
+                COALESCE((SELECT COUNT(*) FROM affiliate_visits av WHERE av.affiliate_user_id = u.id ${dateFilter}), 0) as clicks,
+                COALESCE((SELECT COUNT(*) FROM affiliate_visits av WHERE av.affiliate_user_id = u.id AND av.converted = true ${dateFilter}), 0) as conversions,
+                COALESCE((SELECT SUM(c.amount) FROM commissions c WHERE c.user_id = u.id AND c.status = 'credited' ${dateFilter ? dateFilter.replace(/av\./g, 'c.') : ''}), 0) as total_commissions,
+                COALESCE((SELECT SUM(p.amount) FROM payouts p WHERE p.user_id = u.id AND p.status = 'paid' ${dateFilter ? dateFilter.replace(/av\./g, 'p.') : ''}), 0) as total_payouts
+            FROM users u
+            WHERE u.affiliate_type IS NOT NULL ${affiliateFilter}
+            ORDER BY total_commissions DESC
+        `;
+
+        const { rows } = await db.query(query, params);
+
+        // Summary
+        const summary = {
+            totalCommissions: rows.reduce((sum, r) => sum + parseFloat(r.total_commissions), 0),
+            totalPayouts: rows.reduce((sum, r) => sum + parseFloat(r.total_payouts), 0),
+            totalClicks: rows.reduce((sum, r) => sum + parseInt(r.clicks), 0),
+            totalConversions: rows.reduce((sum, r) => sum + parseInt(r.conversions), 0)
+        };
+        summary.conversionRate = summary.totalClicks > 0 ? ((summary.totalConversions / summary.totalClicks) * 100).toFixed(1) : '0.0';
+
+        res.json({ summary, affiliates: rows });
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json({ summary: { totalCommissions: 0, totalPayouts: 0, totalClicks: 0, totalConversions: 0, conversionRate: '0.0' }, affiliates: [] });
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao gerar relatorio' });
+    }
+});
+
+// Admin: Export CSV
+app.get('/admin/affiliate-reports/export', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { startDate, endDate, affiliateId } = req.query;
+
+        let dateFilter = '';
+        const params = [];
+        let paramIdx = 0;
+
+        if (startDate) { paramIdx++; dateFilter += ` AND av.created_at >= $${paramIdx}`; params.push(startDate); }
+        if (endDate) { paramIdx++; dateFilter += ` AND av.created_at <= $${paramIdx}::date + INTERVAL '1 day'`; params.push(endDate); }
+
+        let affiliateFilter = '';
+        if (affiliateId) { paramIdx++; affiliateFilter = ` AND u.id = $${paramIdx}`; params.push(affiliateId); }
+
+        const query = `
+            SELECT u.name, u.email,
+                COALESCE((SELECT COUNT(*) FROM affiliate_visits av WHERE av.affiliate_user_id = u.id ${dateFilter}), 0) as clicks,
+                COALESCE((SELECT COUNT(*) FROM affiliate_visits av WHERE av.affiliate_user_id = u.id AND av.converted = true ${dateFilter}), 0) as conversions,
+                COALESCE((SELECT SUM(c.amount) FROM commissions c WHERE c.user_id = u.id AND c.status = 'credited' ${dateFilter ? dateFilter.replace(/av\./g, 'c.') : ''}), 0) as total_commissions,
+                COALESCE((SELECT SUM(p.amount) FROM payouts p WHERE p.user_id = u.id AND p.status = 'paid' ${dateFilter ? dateFilter.replace(/av\./g, 'p.') : ''}), 0) as total_payouts
+            FROM users u WHERE u.affiliate_type IS NOT NULL ${affiliateFilter}
+            ORDER BY total_commissions DESC
+        `;
+
+        const { rows } = await db.query(query, params);
+
+        let csv = 'Nome,Email,Cliques,Conversoes,Taxa Conversao,Comissoes,Payouts\n';
+        rows.forEach(r => {
+            const rate = parseInt(r.clicks) > 0 ? ((parseInt(r.conversions) / parseInt(r.clicks)) * 100).toFixed(1) : '0.0';
+            csv += `"${r.name || ''}","${r.email}",${r.clicks},${r.conversions},${rate}%,${parseFloat(r.total_commissions).toFixed(2)},${parseFloat(r.total_payouts).toFixed(2)}\n`;
+        });
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=relatorio-afiliados.csv');
+        res.send(csv);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao exportar relatorio' });
+    }
+});
+
+// =============================================
+// COUPONS
+// =============================================
+
+// Admin: List coupons
+app.get('/admin/coupons', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT c.*, u.name as affiliate_name, u.email as affiliate_email
+             FROM affiliate_coupons c
+             LEFT JOIN users u ON c.affiliate_user_id = u.id
+             ORDER BY c.created_at DESC`
+        );
+        res.json(rows);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json([]);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao listar cupons' });
+    }
+});
+
+// Admin: Create coupon
+app.post('/admin/coupons', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { affiliateUserId, code, discountType, discountValue, minOrderValue, maxUses, active, expiresAt } = req.body;
+        if (!code || !discountValue) return res.status(400).json({ message: 'Codigo e valor do desconto sao obrigatorios' });
+
+        const { rows } = await db.query(
+            `INSERT INTO affiliate_coupons (affiliate_user_id, code, discount_type, discount_value, min_order_value, max_uses, active, expires_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [affiliateUserId || null, code.toUpperCase(), discountType || 'percentage', discountValue, minOrderValue || 0, maxUses || null, active !== false, expiresAt || null]
+        );
+        res.json(rows[0]);
+    } catch (err) {
+        if (err.code === '23505') return res.status(400).json({ message: 'Ja existe um cupom com esse codigo' });
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao criar cupom' });
+    }
+});
+
+// Admin: Update coupon
+app.put('/admin/coupons/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { code, discountType, discountValue, minOrderValue, maxUses, active, expiresAt } = req.body;
+        const { rows } = await db.query(
+            `UPDATE affiliate_coupons SET
+                code = COALESCE($1, code), discount_type = COALESCE($2, discount_type),
+                discount_value = COALESCE($3, discount_value), min_order_value = COALESCE($4, min_order_value),
+                max_uses = $5, active = COALESCE($6, active), expires_at = $7
+             WHERE id = $8 RETURNING *`,
+            [code ? code.toUpperCase() : null, discountType, discountValue, minOrderValue, maxUses || null, active, expiresAt || null, req.params.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Cupom nao encontrado' });
+        res.json(rows[0]);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao atualizar cupom' });
+    }
+});
+
+// Admin: Delete (deactivate) coupon
+app.delete('/admin/coupons/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query('UPDATE affiliate_coupons SET active = false WHERE id = $1', [req.params.id]);
+        res.json({ message: 'Cupom desativado' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao desativar cupom' });
+    }
+});
+
+// Affiliate: Get my coupon
+app.get('/affiliate/my-coupon', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT * FROM affiliate_coupons WHERE affiliate_user_id = $1 AND active = true ORDER BY created_at DESC LIMIT 1',
+            [req.user.id]
+        );
+        res.json(rows.length > 0 ? rows[0] : null);
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json(null);
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao buscar cupom' });
+    }
+});
+
+// Public/Auth: Validate coupon
+app.post('/coupons/validate', async (req, res) => {
+    try {
+        const { code, orderTotal } = req.body;
+        if (!code) return res.status(400).json({ valid: false, message: 'Codigo do cupom e obrigatorio' });
+
+        const { rows } = await db.query(
+            'SELECT * FROM affiliate_coupons WHERE code = $1 AND active = true',
+            [code.toUpperCase()]
+        );
+
+        if (rows.length === 0) return res.json({ valid: false, message: 'Cupom invalido ou expirado' });
+
+        const coupon = rows[0];
+
+        // Check expiration
+        if (coupon.expires_at && new Date(coupon.expires_at) < new Date()) {
+            return res.json({ valid: false, message: 'Cupom expirado' });
+        }
+
+        // Check max uses
+        if (coupon.max_uses && coupon.current_uses >= coupon.max_uses) {
+            return res.json({ valid: false, message: 'Cupom atingiu o limite de uso' });
+        }
+
+        // Check min order value
+        const total = parseFloat(orderTotal) || 0;
+        if (total < parseFloat(coupon.min_order_value)) {
+            return res.json({ valid: false, message: `Pedido minimo: R$ ${parseFloat(coupon.min_order_value).toFixed(2)}` });
+        }
+
+        // Calculate discount
+        let discountAmount = 0;
+        if (coupon.discount_type === 'percentage') {
+            discountAmount = total * (parseFloat(coupon.discount_value) / 100);
+        } else {
+            discountAmount = parseFloat(coupon.discount_value);
+        }
+        discountAmount = Math.min(discountAmount, total);
+
+        res.json({
+            valid: true,
+            discountAmount: discountAmount.toFixed(2),
+            discountType: coupon.discount_type,
+            discountValue: coupon.discount_value,
+            affiliateUserId: coupon.affiliate_user_id,
+            couponId: coupon.id
+        });
+    } catch (err) {
+        if (err.message && err.message.includes('does not exist')) return res.json({ valid: false, message: 'Sistema de cupons nao disponivel' });
+        console.error(err);
+        res.status(500).json({ valid: false, message: 'Erro ao validar cupom' });
     }
 });
 

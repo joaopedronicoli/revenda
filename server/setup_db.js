@@ -320,6 +320,81 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "points_ledger" verificada/criada com sucesso.');
 
+    // Rastreamento de cliques de afiliados
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS affiliate_visits (
+        id SERIAL PRIMARY KEY,
+        affiliate_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        referral_code VARCHAR(50) NOT NULL,
+        ip_address VARCHAR(45),
+        user_agent TEXT,
+        page_url TEXT,
+        converted BOOLEAN DEFAULT false,
+        referred_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "affiliate_visits" verificada/criada com sucesso.');
+
+    // Saques de afiliados
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS payouts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        amount DECIMAL(10,2) NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        method VARCHAR(20) DEFAULT 'pix',
+        pix_key TEXT,
+        bank_info JSONB,
+        admin_notes TEXT,
+        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        processed_at TIMESTAMP,
+        processed_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+      );
+    `);
+    console.log('Tabela "payouts" verificada/criada com sucesso.');
+
+    // Materiais/criativos de afiliados
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS affiliate_creatives (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        type VARCHAR(20) DEFAULT 'image',
+        file_url TEXT NOT NULL,
+        dimensions VARCHAR(50),
+        active BOOLEAN DEFAULT true,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "affiliate_creatives" verificada/criada com sucesso.');
+
+    // Cupons de afiliados
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS affiliate_coupons (
+        id SERIAL PRIMARY KEY,
+        affiliate_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        code VARCHAR(50) UNIQUE NOT NULL,
+        discount_type VARCHAR(20) DEFAULT 'percentage',
+        discount_value DECIMAL(10,2) NOT NULL,
+        min_order_value DECIMAL(10,2) DEFAULT 0,
+        max_uses INTEGER,
+        current_uses INTEGER DEFAULT 0,
+        active BOOLEAN DEFAULT true,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "affiliate_coupons" verificada/criada com sucesso.');
+
+    // Seed: valor minimo de saque
+    await db.query(`
+      INSERT INTO app_settings (key, value, description)
+      VALUES ('min_payout_amount', '50', 'Valor minimo para solicitar saque (R$)')
+      ON CONFLICT (key) DO NOTHING;
+    `);
+
     // =============================================
     // SEEDS - Products
     // =============================================

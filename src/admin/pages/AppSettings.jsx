@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, Save, RefreshCw, Clock, ShoppingCart, Bell, Store } from 'lucide-react'
+import { Settings, Save, RefreshCw, Clock, ShoppingCart, Bell, Store, Wallet } from 'lucide-react'
 import api from '../../services/api'
 
 const settingsConfig = {
@@ -47,6 +47,13 @@ const settingsConfig = {
         description: 'Envia mensagens de recuperação automaticamente via webhook',
         icon: Bell,
         type: 'boolean'
+    },
+    min_payout_amount: {
+        label: 'Valor Minimo de Saque',
+        description: 'Valor minimo que um afiliado precisa ter para solicitar saque',
+        icon: Wallet,
+        type: 'number',
+        suffix: 'R$'
     }
 }
 
@@ -240,6 +247,31 @@ export default function AppSettings() {
                         </h2>
                         <div className="space-y-6">
                             {['enable_auto_recovery', 'recovery_first_delay_minutes', 'recovery_second_delay_minutes'].map((key) => {
+                                const config = settingsConfig[key]
+                                if (!config) return null
+                                return (
+                                    <div key={key} className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <label className="font-medium text-slate-700">
+                                                {config.label}
+                                            </label>
+                                        </div>
+                                        <p className="text-sm text-slate-500">{config.description}</p>
+                                        {renderInput(key, config)}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Affiliate Settings */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                        <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                            <Wallet className="w-5 h-5" />
+                            Afiliados
+                        </h2>
+                        <div className="space-y-6">
+                            {['min_payout_amount'].map((key) => {
                                 const config = settingsConfig[key]
                                 if (!config) return null
                                 return (

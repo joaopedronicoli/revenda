@@ -15,6 +15,8 @@ export default function ProductManagement() {
     const [filter, setFilter] = useState('all')
     const [syncingWC, setSyncingWC] = useState(false)
     const [syncResult, setSyncResult] = useState(null)
+    const [syncingBling, setSyncingBling] = useState(false)
+    const [blingResult, setBlingResult] = useState(null)
     const [showModal, setShowModal] = useState(false)
     const [editingProduct, setEditingProduct] = useState(null)
     const [formData, setFormData] = useState({ sort_order: 0, special_discount: '', is_kit: false, active: true })
@@ -47,6 +49,22 @@ export default function ProductManagement() {
             alert('Erro ao sincronizar produtos do WooCommerce')
         } finally {
             setSyncingWC(false)
+        }
+    }
+
+    const handleSyncBling = async () => {
+        setSyncingBling(true)
+        setBlingResult(null)
+        try {
+            const { data } = await api.post('/admin/bling/sync-stock')
+            setBlingResult(data)
+            loadProducts()
+            setTimeout(() => setBlingResult(null), 5000)
+        } catch (err) {
+            console.error('Error syncing Bling stock:', err)
+            alert(err.response?.data?.message || 'Erro ao sincronizar estoque do Bling')
+        } finally {
+            setSyncingBling(false)
         }
     }
 
@@ -129,6 +147,14 @@ export default function ProductManagement() {
                         <RefreshCw className="w-4 h-4" /> Atualizar
                     </button>
                     <button
+                        onClick={handleSyncBling}
+                        disabled={syncingBling}
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                    >
+                        {syncingBling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        {syncingBling ? 'Sincronizando...' : 'Estoque Bling'}
+                    </button>
+                    <button
                         onClick={handleSyncWC}
                         disabled={syncingWC}
                         className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
@@ -178,7 +204,14 @@ export default function ProductManagement() {
             {syncResult && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
                     <div className="text-green-600 font-medium">
-                        Sincronizacao concluida: {syncResult.imported} importados, {syncResult.updated} atualizados ({syncResult.total} no WooCommerce)
+                        WooCommerce: {syncResult.imported} importados, {syncResult.updated} atualizados, {syncResult.skipped || 0} ignorados (fora de estoque) — {syncResult.total} total
+                    </div>
+                </div>
+            )}
+            {blingResult && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 flex items-center gap-3">
+                    <div className="text-orange-600 font-medium">
+                        Bling: {blingResult.updated} estoques atualizados{blingResult.errors > 0 ? `, ${blingResult.errors} erros` : ''} ({blingResult.total} produtos)
                     </div>
                 </div>
             )}
@@ -202,7 +235,7 @@ export default function ProductManagement() {
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase w-12">Ord.</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Produto</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Tipo</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">SKU</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">SKU / WC ID</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Preco Tabela</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Desc. Especial</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estoque</th>
@@ -238,7 +271,12 @@ export default function ProductManagement() {
                                                 <span className="text-xs text-slate-500">Produto</span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-slate-600 font-mono">{product.sku || '-'}</td>
+                                        <td className="px-4 py-3 text-sm text-slate-600 font-mono">
+                                            <div>{product.sku || '-'}</div>
+                                            {product.woo_product_id && (
+                                                <div className="text-[10px] text-slate-400">WC: {product.woo_product_id}</div>
+                                            )}
+                                        </td>
                                         <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatCurrency(product.table_price)}</td>
                                         <td className="px-4 py-3 text-sm">
                                             {product.special_discount ? (

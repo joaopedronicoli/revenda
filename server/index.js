@@ -781,14 +781,27 @@ app.get('/admin/woocommerce/products', authenticateToken, requireAdmin, async (r
     }
 });
 
+// Helper: strip HTML tags from string
+function stripHtml(html) {
+    if (!html) return '';
+    return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&nbsp;/g, ' ').trim();
+}
+
 // Admin: sync WooCommerce products to local DB
 app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const wcProducts = await woocommerceService.listProducts({ status: 'publish', per_page: 100 });
         let imported = 0;
         let updated = 0;
+        let skipped = 0;
 
         for (const wcp of wcProducts) {
+            // Only import products with stock_status = 'instock'
+            if (wcp.stock_status !== 'instock') {
+                skipped++;
+                continue;
+            }
+
             const { rows: existing } = await db.query(
                 'SELECT id, is_kit FROM products WHERE woo_product_id = $1',
                 [wcp.id]
@@ -796,7 +809,7 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
 
             const image = wcp.images?.[0]?.src || null;
             const price = parseFloat(wcp.price) || parseFloat(wcp.regular_price) || 0;
-            const stockQty = wcp.stock_quantity || 0;
+            const description = stripHtml(wcp.short_description || '');
 
             // Auto-detect kit by category or tag containing "kit" (case-insensitive)
             const categories = (wcp.categories || []).map(c => c.name?.toLowerCase() || '');
@@ -807,25 +820,85 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
                 // Preserve manually-set is_kit unless auto-detected as kit
                 const keepKit = existing[0].is_kit || isKit;
                 await db.query(
-                    `UPDATE products SET name = $1, table_price = $2, image = $3, stock_quantity = $4,
+                    `UPDATE products SET name = $1, description = $2, table_price = $3, image = $4,
                      sku = $5, reference_url = $6, is_kit = $7, updated_at = NOW() WHERE woo_product_id = $8`,
-                    [wcp.name, price, image, stockQty, wcp.sku || null, wcp.permalink || null, keepKit, wcp.id]
+                    [wcp.name, description, price, image, wcp.sku || null, wcp.permalink || null, keepKit, wcp.id]
                 );
                 updated++;
             } else {
                 await db.query(
-                    `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, stock_quantity, is_kit)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, true, 0, $8, $9)`,
-                    [wcp.name, wcp.short_description || '', price, image, wcp.permalink || null, wcp.sku || null, wcp.id, stockQty, isKit]
+                    `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, is_kit)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, true, 0, $8)`,
+                    [wcp.name, description, price, image, wcp.permalink || null, wcp.sku || null, wcp.id, isKit]
                 );
                 imported++;
             }
         }
 
-        res.json({ success: true, imported, updated, total: wcProducts.length });
+        res.json({ success: true, imported, updated, skipped, total: wcProducts.length });
     } catch (err) {
         console.error('Erro ao sincronizar produtos WC:', err.message);
         res.status(500).json({ message: 'Erro ao sincronizar produtos' });
+    }
+});
+
+// Admin: sync stock from Bling
+app.post('/admin/bling/sync-stock', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        // Get Bling access token
+        const { rows: intRows } = await db.query(
+            "SELECT credentials FROM integrations WHERE integration_type = 'bling' AND active = true"
+        );
+        if (intRows.length === 0) {
+            return res.status(400).json({ message: 'Integracao Bling nao configurada' });
+        }
+        let accessToken = intRows[0].credentials?.access_token;
+        if (!accessToken) {
+            return res.status(400).json({ message: 'Bling nao autorizado. Autorize primeiro nas Conexoes.' });
+        }
+
+        // Check if token is expired and refresh if needed
+        const expiresAt = intRows[0].credentials?.token_expires_at ? new Date(intRows[0].credentials.token_expires_at) : null;
+        if (expiresAt && expiresAt.getTime() < Date.now()) {
+            accessToken = await refreshBlingToken('bling');
+        }
+
+        // Get all local products with SKU
+        const { rows: products } = await db.query('SELECT id, sku FROM products WHERE sku IS NOT NULL AND sku != \'\'');
+        if (products.length === 0) {
+            return res.json({ success: true, updated: 0, message: 'Nenhum produto com SKU para sincronizar' });
+        }
+
+        let updatedCount = 0;
+        let errors = 0;
+
+        // Fetch stock from Bling for each product by SKU
+        for (const product of products) {
+            try {
+                const resp = await axios.get(`https://www.bling.com.br/Api/v3/estoques?codigo=${encodeURIComponent(product.sku)}`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+
+                const estoqueData = resp.data?.data;
+                if (estoqueData && estoqueData.length > 0) {
+                    // Sum saldoFisicoTotal from all deposits
+                    const totalStock = estoqueData.reduce((sum, item) => sum + (item.saldoFisicoTotal || 0), 0);
+                    await db.query('UPDATE products SET stock_quantity = $1, updated_at = NOW() WHERE id = $2', [totalStock, product.id]);
+                    updatedCount++;
+                }
+            } catch (err) {
+                // 404 = product not found in Bling, skip silently
+                if (err.response?.status !== 404) {
+                    console.error(`Erro ao buscar estoque Bling SKU ${product.sku}:`, err.message);
+                    errors++;
+                }
+            }
+        }
+
+        res.json({ success: true, updated: updatedCount, errors, total: products.length });
+    } catch (err) {
+        console.error('Erro ao sincronizar estoque Bling:', err.message);
+        res.status(500).json({ message: 'Erro ao sincronizar estoque do Bling' });
     }
 });
 

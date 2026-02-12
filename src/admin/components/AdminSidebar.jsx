@@ -15,7 +15,8 @@ import {
     UserCheck,
     Wallet,
     BarChart3,
-    Image
+    Image,
+    CreditCard
 } from 'lucide-react'
 
 const menuItems = [
@@ -68,6 +69,12 @@ const menuItems = [
         title: 'Materiais',
         icon: Image,
         path: '/admin/creatives',
+        adminOnly: true
+    },
+    {
+        title: 'Gateways',
+        icon: CreditCard,
+        path: '/admin/payment-gateways',
         adminOnly: true
     },
     {

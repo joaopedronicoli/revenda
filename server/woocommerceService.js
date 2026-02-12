@@ -35,4 +35,9 @@ async function addOrderNote(orderId, note, isCustomerNote = false) {
     return data;
 }
 
-module.exports = { createOrder, updateOrderStatus, getOrder, addOrderNote };
+async function listProducts(params = {}) {
+    const { data } = await woo.get('/products', { params: { per_page: 100, ...params } });
+    return data;
+}
+
+module.exports = { createOrder, updateOrderStatus, getOrder, addOrderNote, listProducts };

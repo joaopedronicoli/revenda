@@ -5,17 +5,17 @@ import clsx from 'clsx'
 import CreditCardForm from './CreditCardForm'
 import PixPayment from './PixPayment'
 import api from '../services/api'
-import { createWooCommerceOrder } from '../lib/woocommerceSync'
 
-export default function PaymentSelector({ total, customer, orderId, onPaymentSuccess, onPaymentError }) {
+export default function PaymentSelector({ total, customer, orderId, onPaymentSuccess, onPaymentError, state, gatewayInfo }) {
     const navigate = useNavigate()
-    const [paymentMethod, setPaymentMethod] = useState('credit_card') // 'credit_card' or 'pix'
+    const availableMethods = gatewayInfo?.availableMethods || ['credit_card', 'pix']
+    const hasCreditCard = availableMethods.includes('credit_card')
+    const hasPix = availableMethods.includes('pix')
+    const defaultMethod = hasCreditCard ? 'credit_card' : 'pix'
+    const [paymentMethod, setPaymentMethod] = useState(defaultMethod)
     const [loading, setLoading] = useState(false)
     const [pixData, setPixData] = useState(null)
     const [creditCardSuccess, setCreditCardSuccess] = useState(null)
-
-    // Quando pagamento de cartão confirmado, NÃO redireciona automaticamente
-    // Usuário pode clicar em "Ver Meus Pedidos" ou continuar comprando
 
     const handleCreditCardSubmit = async (cardData) => {
         setLoading(true)
@@ -28,10 +28,14 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                     number: cardData.number,
                     holder: cardData.holder,
                     expiry: cardData.expiry,
-                    cvv: cardData.cvv
+                    cvv: cardData.cvv,
+                    card_token: cardData.card_token,
+                    payment_method_id: cardData.payment_method_id
                 },
                 customer,
-                installments: cardData.installments
+                installments: cardData.installments,
+                state,
+                billingCompanyId: gatewayInfo?.billingCompanyId
             })
 
             if (!result.success) {
@@ -47,7 +51,6 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
             // Buscar order_number do banco
             const { data: { data: orderData } } = await api.get(`/orders/${orderId}`)
 
-            // Pagamento aprovado - mostrar tela de sucesso E limpar carrinho
             if (result.status === 'approved' || result.status === 'paid') {
                 setCreditCardSuccess({
                     ...result,
@@ -55,21 +58,8 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                     installments: cardData.installments,
                     orderNumber: orderData?.order_number
                 })
-
-                // 🆕 CRIAR PEDIDO NO WOOCOMMERCE (status: processing)
-                try {
-                    console.log('🛒 Creating WooCommerce order for approved credit card payment...')
-                    await createWooCommerceOrder(orderId)
-                    console.log('✅ WooCommerce order created successfully with status: processing')
-                } catch (wcError) {
-                    console.error('⚠️ Failed to create WooCommerce order:', wcError)
-                    // Não bloqueia o fluxo se falhar
-                }
-
-                // Limpar carrinho após pagamento aprovado
                 onPaymentSuccess({ paymentMethod: 'credit_card', ...result })
             } else if (result.status === 'pending') {
-                // Aguardando aprovação - também mostrar sucesso (será processado)
                 setCreditCardSuccess({
                     ...result,
                     cardLast4: cardData.number.slice(-4),
@@ -77,10 +67,9 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                     isPending: true,
                     orderNumber: orderData?.order_number
                 })
-                // Limpar carrinho mesmo em pending
                 onPaymentSuccess({ paymentMethod: 'credit_card', ...result })
             } else {
-                throw new Error('Pagamento não aprovado')
+                throw new Error('Pagamento nao aprovado')
             }
         } catch (error) {
             console.error('Payment error:', error)
@@ -97,11 +86,12 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                 amount: total,
                 orderId,
                 paymentMethod: 'pix',
-                customer
+                customer,
+                state,
+                billingCompanyId: gatewayInfo?.billingCompanyId
             })
 
             if (!result.success) {
-                // Se result.error é objeto, extrair a mensagem correta
                 let errorMessage = 'Falha ao gerar PIX'
                 if (typeof result.error === 'string') {
                     errorMessage = result.error
@@ -112,19 +102,8 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
             }
 
             setPixData(result.pix)
-
-            // 🆕 CRIAR PEDIDO NO WOOCOMMERCE IMEDIATAMENTE (status: pending)
-            try {
-                console.log('🛒 Creating WooCommerce order for Pix payment...')
-                await createWooCommerceOrder(orderId)
-                console.log('✅ WooCommerce order created successfully with status: pending')
-            } catch (wcError) {
-                console.error('⚠️ Failed to create WooCommerce order:', wcError)
-                // Não bloqueia o fluxo se falhar
-            }
         } catch (error) {
             console.error('PIX error:', error)
-            // Garantir que a mensagem é sempre string
             const errorMsg = error.message || String(error)
             onPaymentError(errorMsg)
         } finally {
@@ -144,30 +123,34 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
 
                     {/* Tab Selector */}
                     <div className="flex gap-2 bg-slate-100 p-1 rounded-lg">
-                        <button
-                            onClick={() => setPaymentMethod('credit_card')}
-                            className={clsx(
-                                'flex-1 py-3 px-4 rounded-md font-medium transition-all flex items-center justify-center gap-2',
-                                paymentMethod === 'credit_card'
-                                    ? 'bg-white text-primary shadow-sm'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            )}
-                        >
-                            <CreditCard size={20} />
-                            Cartão
-                        </button>
-                        <button
-                            onClick={() => setPaymentMethod('pix')}
-                            className={clsx(
-                                'flex-1 py-3 px-4 rounded-md font-medium transition-all flex items-center justify-center gap-2',
-                                paymentMethod === 'pix'
-                                    ? 'bg-white text-primary shadow-sm'
-                                    : 'text-slate-600 hover:text-slate-900'
-                            )}
-                        >
-                            <Smartphone size={20} />
-                            PIX
-                        </button>
+                        {hasCreditCard && (
+                            <button
+                                onClick={() => setPaymentMethod('credit_card')}
+                                className={clsx(
+                                    'flex-1 py-3 px-4 rounded-md font-medium transition-all flex items-center justify-center gap-2',
+                                    paymentMethod === 'credit_card'
+                                        ? 'bg-white text-primary shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                )}
+                            >
+                                <CreditCard size={20} />
+                                Cartao
+                            </button>
+                        )}
+                        {hasPix && (
+                            <button
+                                onClick={() => setPaymentMethod('pix')}
+                                className={clsx(
+                                    'flex-1 py-3 px-4 rounded-md font-medium transition-all flex items-center justify-center gap-2',
+                                    paymentMethod === 'pix'
+                                        ? 'bg-white text-primary shadow-sm'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                )}
+                            >
+                                <Smartphone size={20} />
+                                PIX
+                            </button>
+                        )}
                     </div>
                 </>
             )}
@@ -179,6 +162,8 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                         amount={total}
                         onSubmit={handleCreditCardSubmit}
                         loading={loading}
+                        gatewayType={gatewayInfo?.gatewayForCreditCard?.type}
+                        publicKey={gatewayInfo?.gatewayForCreditCard?.publicKey}
                     />
                 )}
 
@@ -189,7 +174,7 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                             Pagamento via PIX
                         </h4>
                         <p className="text-slate-600 mb-6">
-                            Clique no botão abaixo para gerar o código PIX
+                            Clique no botao abaixo para gerar o codigo PIX
                         </p>
                         <button
                             onClick={handlePixRequest}
@@ -202,7 +187,7 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                                     Gerando PIX...
                                 </>
                             ) : (
-                                'Gerar Código PIX'
+                                'Gerar Codigo PIX'
                             )}
                         </button>
                     </div>
@@ -213,18 +198,17 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                         pixData={pixData}
                         orderId={orderId}
                         onPaymentConfirmed={handlePixPaymentConfirmed}
+                        gatewayType={gatewayInfo?.gatewayForPix?.type}
                     />
                 )}
 
-                {/* Tela de sucesso do Cartão de Crédito */}
+                {/* Tela de sucesso do Cartao de Credito */}
                 {creditCardSuccess && (
                     <div className="flex flex-col items-center justify-center py-8 animate-fade-in">
-                        {/* Círculo animado de sucesso */}
                         <div className="relative mb-6">
                             <div className="w-32 h-32 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-2xl animate-bounce-slow">
                                 <CheckCircle2 className="w-16 h-16 text-white" strokeWidth={2.5} />
                             </div>
-                            {/* Partículas decorativas */}
                             <div className="absolute -top-2 -right-2 animate-ping">
                                 <PartyPopper className="w-8 h-8 text-yellow-500" />
                             </div>
@@ -236,19 +220,17 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                             </div>
                         </div>
 
-                        {/* Mensagem de sucesso */}
                         <div className="text-center space-y-3">
                             <h2 className="text-2xl font-bold text-slate-900">
                                 {creditCardSuccess.isPending ? 'Pagamento em Processamento!' : 'Pagamento Confirmado!'}
                             </h2>
                             <p className="text-slate-600 max-w-sm">
                                 {creditCardSuccess.isPending
-                                    ? 'Seu pagamento está sendo processado. Você receberá a confirmação em breve.'
-                                    : 'Seu pagamento via Cartão de Crédito foi aprovado com sucesso!'}
+                                    ? 'Seu pagamento esta sendo processado. Voce recebera a confirmacao em breve.'
+                                    : 'Seu pagamento via Cartao de Credito foi aprovado com sucesso!'}
                             </p>
                         </div>
 
-                        {/* Card com resumo do pedido */}
                         <div className="mt-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 w-full max-w-sm">
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-sm">
@@ -260,18 +242,17 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                                 </div>
                             </div>
 
-                            {/* Detalhes do pagamento */}
                             <div className="bg-white/60 rounded-lg p-4 mb-4 space-y-2">
                                 <div className="flex justify-between text-sm">
-                                    <span className="text-slate-600">Método</span>
+                                    <span className="text-slate-600">Metodo</span>
                                     <span className="font-medium text-slate-900 flex items-center gap-1">
                                         <CreditCard size={14} />
-                                        Cartão de Crédito
+                                        Cartao de Credito
                                     </span>
                                 </div>
                                 {creditCardSuccess.cardLast4 && (
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-slate-600">Cartão</span>
+                                        <span className="text-slate-600">Cartao</span>
                                         <span className="font-medium text-slate-900">
                                             •••• {creditCardSuccess.cardLast4}
                                         </span>
@@ -296,7 +277,6 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                                 </div>
                             </div>
 
-                            {/* Link para Meus Pedidos */}
                             <button
                                 onClick={() => navigate('/profile?tab=orders')}
                                 className="w-full flex items-center justify-center gap-2 bg-white border border-green-300 text-green-700 py-3 px-4 rounded-lg font-medium hover:bg-green-50 transition-colors"
@@ -306,7 +286,6 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                             </button>
                         </div>
 
-                        {/* Botão para continuar comprando */}
                         <button
                             onClick={() => navigate('/')}
                             className="mt-6 text-primary hover:text-primary-dark font-medium transition-colors"
@@ -314,7 +293,6 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                             Continuar Comprando
                         </button>
 
-                        {/* CSS para animações customizadas */}
                         <style>{`
                             @keyframes bounce-slow {
                                 0%, 100% { transform: translateY(0); }

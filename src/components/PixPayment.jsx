@@ -3,9 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { Copy, CheckCircle2, Clock, QrCode, RefreshCw, PartyPopper, ShoppingBag, Hourglass, ExternalLink } from 'lucide-react'
 import QRCode from 'qrcode'
 import api from '../services/api'
-import { createWooCommerceOrder } from '../lib/woocommerceSync'
 
-export default function PixPayment({ pixData, orderId, onPaymentConfirmed }) {
+const GATEWAY_LABELS = {
+    ipag: 'iPag',
+    mercadopago: 'Mercado Pago',
+    stripe: 'Stripe'
+}
+
+export default function PixPayment({ pixData, orderId, onPaymentConfirmed, gatewayType }) {
     const navigate = useNavigate()
     const [qrCodeUrl, setQrCodeUrl] = useState(null)
     const [copied, setCopied] = useState(false)
@@ -59,14 +64,14 @@ export default function PixPayment({ pixData, orderId, onPaymentConfirmed }) {
         try {
             setChecking(true)
 
-            // Sincronizar com iPag
+            // Sincronizar com gateway
             await api.post(`/orders/${orderId}/sync`).catch(() => { })
 
             // Verificar no banco
             const { data: { data } } = await api.get(`/orders/${orderId}`)
 
             const successStatuses = ['approved', 'paid', 'capturado', 'succeeded', 'sucesso', 'pago', '5', '8']
-            const ipagStatus = (data?.ipag_status || '').toLowerCase()
+            const ipagStatus = (data?.ipag_status || data?.gateway_status || '').toLowerCase()
             const orderStatus = (data?.status || '').toLowerCase()
             const isSuccess = successStatuses.some(s => ipagStatus.includes(s)) || orderStatus === 'paid'
 

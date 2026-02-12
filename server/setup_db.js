@@ -263,6 +263,11 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "products" verificada/criada com sucesso.');
 
+    // Adicionar coluna stock_quantity se nao existir
+    try {
+        await db.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT 0');
+    } catch (e) { /* column may already exist */ }
+
     // Kits
     await db.query(`
       CREATE TABLE IF NOT EXISTS kits (
@@ -470,6 +475,58 @@ const updateSchema = async () => {
     // Marcar usuarios existentes como email verificado (nao bloquear quem ja esta cadastrado)
     await db.query(`UPDATE users SET email_verified = true WHERE email_verified = false OR email_verified IS NULL`);
     console.log('Migracao email_verified para usuarios existentes concluida.');
+
+    // =============================================
+    // NOVAS TABELAS - Sistema de Gateways Multi-CNPJ
+    // =============================================
+
+    // Empresas faturadoras
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS billing_companies (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        cnpj VARCHAR(20) NOT NULL,
+        razao_social VARCHAR(255),
+        states TEXT[] NOT NULL,
+        is_default BOOLEAN DEFAULT false,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "billing_companies" verificada/criada com sucesso.');
+
+    // Gateways de pagamento por empresa
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS payment_gateways (
+        id SERIAL PRIMARY KEY,
+        billing_company_id INTEGER NOT NULL REFERENCES billing_companies(id) ON DELETE CASCADE,
+        gateway_type VARCHAR(50) NOT NULL,
+        display_name VARCHAR(100),
+        credentials JSONB NOT NULL DEFAULT '{}',
+        supported_methods TEXT[] NOT NULL,
+        priority INTEGER DEFAULT 0,
+        active BOOLEAN DEFAULT true,
+        sandbox BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(billing_company_id, gateway_type)
+      );
+    `);
+    console.log('Tabela "payment_gateways" verificada/criada com sucesso.');
+
+    // Novas colunas em orders para gateway multi-CNPJ
+    const gatewayOrderColumns = [
+      { name: 'billing_company_id', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS billing_company_id INTEGER REFERENCES billing_companies(id)" },
+      { name: 'payment_gateway_id', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_gateway_id INTEGER REFERENCES payment_gateways(id)" },
+      { name: 'gateway_type', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gateway_type VARCHAR(50)" },
+      { name: 'gateway_transaction_id', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gateway_transaction_id VARCHAR(255)" },
+      { name: 'gateway_status', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS gateway_status VARCHAR(50)" },
+    ];
+    for (const col of gatewayOrderColumns) {
+      try { await db.query(col.sql); } catch (e) { /* already exists */ }
+    }
+    console.log('Colunas de gateway adicionadas em "orders".');
 
     console.log('Schema revenda_pelg atualizado com sucesso!');
   } catch (err) {

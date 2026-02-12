@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Package, Plus, Edit2, Trash2, Search, RefreshCw, Eye, EyeOff, ExternalLink, Save, X, ChevronUp, ChevronDown } from 'lucide-react'
+import { Package, Plus, Edit2, Trash2, Search, RefreshCw, Eye, EyeOff, ExternalLink, Save, X, ChevronUp, ChevronDown, Download } from 'lucide-react'
 import api from '../../services/api'
 
 const formatCurrency = (value) => {
@@ -31,6 +31,8 @@ export default function ProductManagement() {
     const [saving, setSaving] = useState(false)
     const [filter, setFilter] = useState('all')
     const [deleteConfirm, setDeleteConfirm] = useState(null)
+    const [syncingWC, setSyncingWC] = useState(false)
+    const [syncResult, setSyncResult] = useState(null)
 
     useEffect(() => { loadProducts() }, [])
 
@@ -43,6 +45,22 @@ export default function ProductManagement() {
             console.error('Error loading products:', err)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const handleSyncWC = async () => {
+        setSyncingWC(true)
+        setSyncResult(null)
+        try {
+            const { data } = await api.post('/admin/woocommerce/sync-products')
+            setSyncResult(data)
+            loadProducts()
+            setTimeout(() => setSyncResult(null), 5000)
+        } catch (err) {
+            console.error('Error syncing WC products:', err)
+            alert('Erro ao sincronizar produtos do WooCommerce')
+        } finally {
+            setSyncingWC(false)
         }
     }
 
@@ -144,6 +162,14 @@ export default function ProductManagement() {
                     <button onClick={loadProducts} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
                         <RefreshCw className="w-4 h-4" /> Atualizar
                     </button>
+                    <button
+                        onClick={handleSyncWC}
+                        disabled={syncingWC}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                    >
+                        {syncingWC ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                        {syncingWC ? 'Sincronizando...' : 'Sincronizar WooCommerce'}
+                    </button>
                     <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90">
                         <Plus className="w-4 h-4" /> Novo Produto
                     </button>
@@ -180,6 +206,15 @@ export default function ProductManagement() {
                 </div>
             </div>
 
+            {/* Sync result banner */}
+            {syncResult && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+                    <div className="text-green-600 font-medium">
+                        Sincronizacao concluida: {syncResult.imported} importados, {syncResult.updated} atualizados ({syncResult.total} no WooCommerce)
+                    </div>
+                </div>
+            )}
+
             {/* Products Grid */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 {loading ? (
@@ -201,6 +236,7 @@ export default function ProductManagement() {
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">SKU</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Preco Tabela</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Desc. Especial</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Estoque</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
                                 </tr>
@@ -230,6 +266,11 @@ export default function ProductManagement() {
                                             {product.special_discount ? (
                                                 <span className="text-orange-600 font-medium">{Math.round(product.special_discount * 100)}%</span>
                                             ) : '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm">
+                                            <span className={`font-medium ${(product.stock_quantity || 0) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                                {product.stock_quantity || 0}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-3">
                                             <button

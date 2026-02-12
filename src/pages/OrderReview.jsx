@@ -24,6 +24,7 @@ export default function OrderReview() {
     const [couponResult, setCouponResult] = useState(null)
     const [couponLoading, setCouponLoading] = useState(false)
     const [couponError, setCouponError] = useState('')
+    const [gatewayInfo, setGatewayInfo] = useState(null)
 
     const isFirstOrder = !user?.first_order_completed
     const userCommissionBalance = user?.commission_balance || 0
@@ -125,6 +126,20 @@ export default function OrderReview() {
             setLoading(false)
         }
     }
+
+    // Fetch available payment methods when address changes
+    useEffect(() => {
+        if (!selectedAddress) return
+        const fetchGatewayInfo = async () => {
+            try {
+                const { data } = await api.get(`/payments/available-methods?state=${selectedAddress.state}`)
+                setGatewayInfo(data)
+            } catch (err) {
+                console.warn('Erro ao buscar metodos de pagamento:', err.message)
+            }
+        }
+        fetchGatewayInfo()
+    }, [selectedAddress?.id])
 
     // Create order after kit selection (for first orders)
     const createOrderWithKit = async () => {
@@ -548,6 +563,8 @@ export default function OrderReview() {
                                     orderId={paymentData.orderId}
                                     onPaymentSuccess={handlePaymentSuccess}
                                     onPaymentError={handlePaymentError}
+                                    state={selectedAddress?.state}
+                                    gatewayInfo={gatewayInfo}
                                 />
                             ) : (
                                 <div className="text-center py-8 text-slate-600">

@@ -6,13 +6,22 @@ const db = require('./db');
 const ipagService = require('./ipagService');
 const woocommerceService = require('./woocommerceService');
 const emailService = require('./emailService');
+const billingService = require('./billingService');
+const gatewayRouter = require('./gateways/gatewayRouter');
 const { updateSchema } = require('./setup_db');
 require('dotenv').config();
 
 const app = express();
 
 app.use(cors());
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({
+    limit: '15mb',
+    verify: (req, res, buf) => {
+        if (req.originalUrl === '/webhooks/gateway/stripe') {
+            req.rawBody = buf;
+        }
+    }
+}));
 
 // =============================================
 // CONSTANTES DE NIVEL
@@ -248,6 +257,91 @@ async function grantAchievement(userId, slug) {
 }
 
 // Creditar comissao de indicacao
+// Logica pos-pagamento reutilizavel (chamada por PUT /orders, POST /orders/:id/sync e webhook iPag)
+async function processPostPaymentLogic(orderId, userId, orderTotal, orderDetails) {
+    try {
+        // Atualizar totais do usuario
+        await db.query(
+            `UPDATE users SET
+                last_purchase_date = NOW(),
+                total_accumulated = total_accumulated + $1,
+                quarter_accumulated = quarter_accumulated + $1,
+                first_order_completed = true,
+                has_purchased_kit = CASE WHEN has_purchased_kit = false AND $3::jsonb->>'kit' IS NOT NULL THEN true ELSE has_purchased_kit END,
+                kit_type = CASE WHEN has_purchased_kit = false AND $3::jsonb->'kit'->>'slug' IS NOT NULL THEN $3::jsonb->'kit'->>'slug' ELSE kit_type END,
+                kit_purchased_at = CASE WHEN has_purchased_kit = false AND $3::jsonb->>'kit' IS NOT NULL THEN NOW() ELSE kit_purchased_at END
+             WHERE id = $2`,
+            [orderTotal, userId, JSON.stringify(orderDetails || {})]
+        );
+
+        // Creditar comissao de indicacao
+        await creditReferralCommission(orderId, userId, orderTotal);
+
+        // Ativar indicacao se for primeiro pedido
+        const activatedRef = await db.query(
+            "UPDATE referrals SET status = 'active', activated_at = NOW() WHERE referred_id = $1 AND status = 'pending' RETURNING referrer_id",
+            [userId]
+        );
+
+        // Email: notificar referrer sobre nova indicacao ativa
+        if (activatedRef.rows.length > 0) {
+            try {
+                const refId = activatedRef.rows[0].referrer_id;
+                const { rows: refUser } = await db.query('SELECT email, name FROM users WHERE id = $1', [refId]);
+                const { rows: buyerUser } = await db.query('SELECT name FROM users WHERE id = $1', [userId]);
+                if (refUser.length > 0) {
+                    emailService.sendNewReferralEmail(refUser[0].email, refUser[0].name, buyerUser[0]?.name || 'novo usuario').catch(() => {});
+                }
+            } catch (e) { /* fire-and-forget */ }
+        }
+
+        // Coupon integration: se pedido tem cupom, creditar comissao ao afiliado do cupom
+        try {
+            const couponCode = orderDetails?.coupon_code;
+            if (couponCode) {
+                const { rows: couponRows } = await db.query(
+                    "SELECT id, affiliate_user_id, discount_type, discount_value FROM affiliate_coupons WHERE code = $1 AND active = true",
+                    [couponCode]
+                );
+                if (couponRows.length > 0) {
+                    const coupon = couponRows[0];
+                    await db.query('UPDATE affiliate_coupons SET current_uses = current_uses + 1 WHERE id = $1', [coupon.id]);
+                    const couponCommission = orderTotal * 0.05;
+                    if (couponCommission > 0 && coupon.affiliate_user_id) {
+                        await db.query(
+                            `INSERT INTO commissions (user_id, source_user_id, order_id, type, amount, rate, status, credited_at)
+                             VALUES ($1, $2, $3, 'coupon', $4, 0.05, 'credited', NOW())`,
+                            [coupon.affiliate_user_id, userId, orderId, couponCommission]
+                        );
+                        await db.query(
+                            'UPDATE users SET commission_balance = commission_balance + $1 WHERE id = $2',
+                            [couponCommission, coupon.affiliate_user_id]
+                        );
+                    }
+                }
+            }
+        } catch (e) { console.error('Erro ao processar cupom:', e); }
+
+        // Recalcular nivel
+        await recalculateUserLevel(userId);
+
+        // Checar conquistas
+        await checkAndGrantAchievements(userId);
+
+        // Award points for purchase
+        const purchasePoints = Math.floor(orderTotal / 10);
+        if (purchasePoints > 0) {
+            await db.query('UPDATE users SET points = points + $1 WHERE id = $2', [purchasePoints, userId]);
+            await db.query(
+                'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
+                [userId, purchasePoints, 'purchase', 'Pontos por compra', String(orderId)]
+            );
+        }
+    } catch (e) {
+        console.error('Erro em processPostPaymentLogic:', e);
+    }
+}
+
 async function creditReferralCommission(orderId, buyerUserId, orderTotal) {
     const { rows } = await db.query('SELECT referred_by FROM users WHERE id = $1', [buyerUserId]);
     if (rows.length === 0 || !rows[0].referred_by) return;
@@ -618,6 +712,69 @@ app.delete('/admin/products/:id', authenticateToken, requireAdmin, async (req, r
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao excluir produto' });
+    }
+});
+
+// Admin: list WooCommerce products
+app.get('/admin/woocommerce/products', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const wcProducts = await woocommerceService.listProducts({ status: 'publish' });
+        const simplified = wcProducts.map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            regular_price: p.regular_price,
+            stock_quantity: p.stock_quantity,
+            stock_status: p.stock_status,
+            sku: p.sku,
+            image: p.images?.[0]?.src || null,
+            permalink: p.permalink
+        }));
+        res.json(simplified);
+    } catch (err) {
+        console.error('Erro ao listar produtos WC:', err.message);
+        res.status(500).json({ message: 'Erro ao buscar produtos do WooCommerce' });
+    }
+});
+
+// Admin: sync WooCommerce products to local DB
+app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const wcProducts = await woocommerceService.listProducts({ status: 'publish', per_page: 100 });
+        let imported = 0;
+        let updated = 0;
+
+        for (const wcp of wcProducts) {
+            const { rows: existing } = await db.query(
+                'SELECT id FROM products WHERE woo_product_id = $1',
+                [wcp.id]
+            );
+
+            const image = wcp.images?.[0]?.src || null;
+            const price = parseFloat(wcp.price) || parseFloat(wcp.regular_price) || 0;
+            const stockQty = wcp.stock_quantity || 0;
+
+            if (existing.length > 0) {
+                await db.query(
+                    `UPDATE products SET name = $1, table_price = $2, image = $3, stock_quantity = $4,
+                     sku = $5, reference_url = $6, updated_at = NOW() WHERE woo_product_id = $7`,
+                    [wcp.name, price, image, stockQty, wcp.sku || null, wcp.permalink || null, wcp.id]
+                );
+                updated++;
+            } else {
+                await db.query(
+                    `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, stock_quantity)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, true, 0, $8)`,
+                    [wcp.name, wcp.short_description || '', price, image, wcp.permalink || null, wcp.sku || null, wcp.id, stockQty]
+                );
+                imported++;
+            }
+        }
+
+        res.json({ success: true, imported, updated, total: wcProducts.length });
+    } catch (err) {
+        console.error('Erro ao sincronizar produtos WC:', err.message);
+        res.status(500).json({ message: 'Erro ao sincronizar produtos' });
     }
 });
 
@@ -1286,13 +1443,91 @@ app.post('/orders', authenticateToken, async (req, res) => {
             commission_credit_applied: creditApplied
         };
 
+        // Usar order_number temporario, sera substituido pelo numero WC
+        const tempOrderNumber = order_number || `TEMP-${Date.now()}`;
+
         const { rows } = await db.query(
             `INSERT INTO orders (user_id, order_number, details, payment_method, installments, total, address_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [req.user.id, order_number, JSON.stringify(enrichedDetails), payment_method, installments || 1, finalTotal, address_id]
+            [req.user.id, tempOrderNumber, JSON.stringify(enrichedDetails), payment_method, installments || 1, finalTotal, address_id]
         );
 
-        res.status(201).json(rows[0]);
+        const newOrder = rows[0];
+
+        // Auto-criar pedido no WooCommerce
+        try {
+            // Buscar endereco para enviar ao WC
+            let addressData = {};
+            if (address_id) {
+                const { rows: addrRows } = await db.query('SELECT * FROM addresses WHERE id = $1', [address_id]);
+                if (addrRows.length > 0) addressData = addrRows[0];
+            }
+
+            const lineItems = (enrichedDetails.items || [])
+                .filter(item => item.woo_product_id)
+                .map(item => ({
+                    product_id: item.woo_product_id,
+                    quantity: item.quantity,
+                    price: (item.tablePrice || item.price || 0).toString()
+                }));
+
+            if (lineItems.length > 0) {
+                const wcOrderData = {
+                    status: 'pending',
+                    billing: {
+                        first_name: enrichedDetails.user_name || 'Cliente',
+                        last_name: '',
+                        email: enrichedDetails.user_email || '',
+                        phone: enrichedDetails.user_whatsapp || '',
+                        address_1: addressData.street || '',
+                        address_2: addressData.complement || '',
+                        city: addressData.city || '',
+                        state: addressData.state || '',
+                        postcode: addressData.cep || '',
+                        country: 'BR'
+                    },
+                    shipping: {
+                        first_name: enrichedDetails.user_name || 'Cliente',
+                        last_name: '',
+                        address_1: addressData.street || '',
+                        address_2: addressData.complement || '',
+                        city: addressData.city || '',
+                        state: addressData.state || '',
+                        postcode: addressData.cep || '',
+                        country: 'BR'
+                    },
+                    line_items: lineItems,
+                    customer_note: `Pedido do App de Revenda: ${newOrder.id}`,
+                    shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
+                    meta_data: [
+                        { key: '_revenda_app_order_id', value: String(newOrder.id) },
+                        { key: '_payment_method_title', value: payment_method || 'Nao informado' },
+                        { key: '_billing_number', value: addressData.number || '' },
+                        { key: '_billing_neighborhood', value: addressData.neighborhood || '' },
+                        { key: '_billing_cpf', value: enrichedDetails.user_cpf || '' }
+                    ]
+                };
+
+                const wcOrder = await woocommerceService.createOrder(wcOrderData);
+
+                // Atualizar pedido local com numero do WC
+                const { rows: updatedRows } = await db.query(
+                    `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
+                     tracking_url = $4, updated_at = NOW() WHERE id = $5 RETURNING *`,
+                    [String(wcOrder.number), String(wcOrder.id), String(wcOrder.number),
+                     `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
+                     newOrder.id]
+                );
+
+                console.log(`WC order created: #${wcOrder.number} for local order ${newOrder.id}`);
+                return res.status(201).json(updatedRows[0]);
+            }
+        } catch (wcErr) {
+            console.error('Erro ao criar pedido no WooCommerce (nao bloqueia):', wcErr.message);
+            // Nao bloqueia - pedido local ja foi criado
+        }
+
+        res.status(201).json(newOrder);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao criar pedido' });
@@ -1336,85 +1571,18 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
         if (status && ['paid', 'completed', 'processing'].includes(status)) {
             const order = rows[0];
             const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
 
-            // Atualizar totais do usuario
-            await db.query(
-                `UPDATE users SET
-                    last_purchase_date = NOW(),
-                    total_accumulated = total_accumulated + $1,
-                    quarter_accumulated = quarter_accumulated + $1,
-                    first_order_completed = true,
-                    has_purchased_kit = CASE WHEN has_purchased_kit = false AND (details->>'kit') IS NOT NULL THEN true ELSE has_purchased_kit END,
-                    kit_type = CASE WHEN has_purchased_kit = false AND (details->'kit'->>'slug') IS NOT NULL THEN details->'kit'->>'slug' ELSE kit_type END,
-                    kit_purchased_at = CASE WHEN has_purchased_kit = false AND (details->>'kit') IS NOT NULL THEN NOW() ELSE kit_purchased_at END
-                 WHERE id = $2`,
-                [orderTotal, order.user_id]
-            );
-
-            // Creditar comissao de indicacao
-            await creditReferralCommission(order.id, order.user_id, orderTotal);
-
-            // Ativar indicacao se for primeiro pedido
-            const activatedRef = await db.query(
-                "UPDATE referrals SET status = 'active', activated_at = NOW() WHERE referred_id = $1 AND status = 'pending' RETURNING referrer_id",
-                [order.user_id]
-            );
-
-            // Email: notificar referrer sobre nova indicacao ativa
-            if (activatedRef.rows.length > 0) {
+            // Sincronizar status no WooCommerce automaticamente
+            if (order.woocommerce_order_id) {
                 try {
-                    const refId = activatedRef.rows[0].referrer_id;
-                    const { rows: refUser } = await db.query('SELECT email, name FROM users WHERE id = $1', [refId]);
-                    const { rows: buyerUser } = await db.query('SELECT name FROM users WHERE id = $1', [order.user_id]);
-                    if (refUser.length > 0) {
-                        emailService.sendNewReferralEmail(refUser[0].email, refUser[0].name, buyerUser[0]?.name || 'novo usuario').catch(() => {});
-                    }
-                } catch (e) { /* fire-and-forget */ }
-            }
-
-            // Coupon integration: se pedido tem cupom, creditar comissao ao afiliado do cupom
-            try {
-                const couponCode = order.details?.coupon_code;
-                if (couponCode) {
-                    const { rows: couponRows } = await db.query(
-                        "SELECT id, affiliate_user_id, discount_type, discount_value FROM affiliate_coupons WHERE code = $1 AND active = true",
-                        [couponCode]
-                    );
-                    if (couponRows.length > 0) {
-                        const coupon = couponRows[0];
-                        // Incrementar uso do cupom
-                        await db.query('UPDATE affiliate_coupons SET current_uses = current_uses + 1 WHERE id = $1', [coupon.id]);
-                        // Creditar comissao ao afiliado do cupom (5% do pedido)
-                        const couponCommission = orderTotal * 0.05;
-                        if (couponCommission > 0 && coupon.affiliate_user_id) {
-                            await db.query(
-                                `INSERT INTO commissions (user_id, source_user_id, order_id, type, amount, rate, status, credited_at)
-                                 VALUES ($1, $2, $3, 'coupon', $4, 0.05, 'credited', NOW())`,
-                                [coupon.affiliate_user_id, order.user_id, order.id, couponCommission]
-                            );
-                            await db.query(
-                                'UPDATE users SET commission_balance = commission_balance + $1 WHERE id = $2',
-                                [couponCommission, coupon.affiliate_user_id]
-                            );
-                        }
-                    }
+                    const wcStatusMap = { paid: 'processing', completed: 'completed', processing: 'processing' };
+                    const wcStatus = wcStatusMap[status] || 'processing';
+                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, wcStatus);
+                    console.log(`WC status synced to ${wcStatus} for order ${order.id}`);
+                } catch (wcErr) {
+                    console.error('Erro ao sincronizar status WC:', wcErr.message);
                 }
-            } catch (e) { console.error('Erro ao processar cupom:', e); }
-
-            // Recalcular nivel
-            await recalculateUserLevel(order.user_id);
-
-            // Checar conquistas
-            await checkAndGrantAchievements(order.user_id);
-
-            // Award points for purchase
-            const purchasePoints = Math.floor(orderTotal / 10); // 1 ponto a cada R$10
-            if (purchasePoints > 0) {
-                await db.query('UPDATE users SET points = points + $1 WHERE id = $2', [purchasePoints, order.user_id]);
-                await db.query(
-                    'INSERT INTO points_ledger (user_id, points, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
-                    [order.user_id, purchasePoints, 'purchase', 'Pontos por compra', String(order.id)]
-                );
             }
         }
 
@@ -1439,19 +1607,166 @@ app.delete('/orders/pending-orphans', authenticateToken, async (req, res) => {
 });
 
 // =============================================
+// SYNC iPag payment status
+// =============================================
+
+app.post('/orders/:id/sync', authenticateToken, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
+            [req.params.id, req.user.id]
+        );
+
+        if (rows.length === 0) return res.status(404).json({ message: 'Pedido nao encontrado' });
+        const order = rows[0];
+
+        const txnId = order.gateway_transaction_id || order.ipag_transaction_id;
+        if (!txnId) {
+            return res.json({ synced: false, order });
+        }
+
+        let paymentStatus;
+
+        // Usar gateway configurado se disponivel, senao fallback iPag
+        if (order.payment_gateway_id && order.gateway_type) {
+            const gw = await billingService.getGatewayById(order.payment_gateway_id);
+            if (gw) {
+                const gwService = gatewayRouter.getGateway(gw.gateway_type);
+                if (gwService) {
+                    paymentStatus = await gwService.verifyPaymentStatus(txnId, gw.credentials);
+                }
+            }
+        }
+
+        if (!paymentStatus) {
+            // Fallback iPag
+            paymentStatus = await ipagService.verifyPaymentStatus(txnId);
+        }
+
+        const statusLabel = paymentStatus.ipag_status || paymentStatus.gateway_status || paymentStatus.status;
+        console.log(`Sync order ${order.id}: status = ${statusLabel}, isPaid = ${paymentStatus.status === 'paid'}`);
+
+        // Atualizar status
+        await db.query(
+            'UPDATE orders SET ipag_status = $1, gateway_status = $1, updated_at = NOW() WHERE id = $2',
+            [statusLabel, order.id]
+        );
+
+        // Se pago e pedido ainda pending -> marcar como paid + processar pos-pagamento
+        if (paymentStatus.status === 'paid' && order.status === 'pending') {
+            await db.query(
+                "UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1",
+                [order.id]
+            );
+
+            const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+
+            // Sincronizar WC
+            if (order.woocommerce_order_id) {
+                try {
+                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing');
+                } catch (wcErr) {
+                    console.error('Erro ao sincronizar WC no sync:', wcErr.message);
+                }
+            }
+
+            const { rows: updated } = await db.query('SELECT * FROM orders WHERE id = $1', [order.id]);
+            return res.json({ synced: true, paid: true, order: updated[0] });
+        }
+
+        const { rows: updated } = await db.query('SELECT * FROM orders WHERE id = $1', [order.id]);
+        res.json({ synced: true, paid: false, order: updated[0] });
+    } catch (err) {
+        console.error('Erro ao sincronizar pedido:', err);
+        res.status(500).json({ message: 'Erro ao sincronizar pedido' });
+    }
+});
+
+// =============================================
 // PAYMENTS (iPag)
 // =============================================
 
 app.post('/payments/process', authenticateToken, async (req, res) => {
-    const { paymentMethod, amount, orderId, cardData, customer, installments } = req.body;
+    const { paymentMethod, amount, orderId, cardData, customer, installments, state, billingCompanyId } = req.body;
 
     try {
         let result;
+        let usedGateway = null;
+        let usedBillingCompanyId = billingCompanyId || null;
 
-        if (paymentMethod === 'pix') {
-            result = await ipagService.generatePix({ amount, orderId, customer });
+        // Tentar resolver gateway via billing company
+        let gateway = null;
+        if (billingCompanyId) {
+            gateway = await billingService.selectGateway(billingCompanyId, paymentMethod);
+        }
+
+        // Se nao achou gateway por billing company, tentar pelo state do pedido
+        if (!gateway && orderId) {
+            try {
+                const { rows: orderRows } = await db.query(
+                    'SELECT o.address_id, a.state FROM orders o LEFT JOIN addresses a ON a.id = o.address_id WHERE o.id = $1',
+                    [orderId]
+                );
+                if (orderRows.length > 0 && orderRows[0].state) {
+                    const resolved = await billingService.resolveForState(orderRows[0].state);
+                    if (resolved) {
+                        usedBillingCompanyId = resolved.billingCompanyId;
+                        gateway = await billingService.selectGateway(resolved.billingCompanyId, paymentMethod);
+                    }
+                }
+            } catch (e) {
+                console.warn('Erro ao resolver billing company:', e.message);
+            }
+        }
+
+        if (gateway) {
+            // Usar gateway configurado
+            const gwService = gatewayRouter.getGateway(gateway.gateway_type);
+            if (!gwService) throw new Error(`Gateway ${gateway.gateway_type} nao suportado`);
+
+            usedGateway = gateway;
+
+            if (paymentMethod === 'pix') {
+                result = await gwService.generatePix({ amount, orderId, customer, credentials: gateway.credentials });
+            } else {
+                result = await gwService.processCardPayment({ amount, orderId, cardData, customer, installments, credentials: gateway.credentials });
+            }
         } else {
-            result = await ipagService.processCardPayment({ amount, orderId, cardData, customer, installments });
+            // Fallback: iPag via .env
+            console.log('Usando fallback iPag (.env) para pagamento');
+            if (paymentMethod === 'pix') {
+                result = await ipagService.generatePix({ amount, orderId, customer });
+            } else {
+                result = await ipagService.processCardPayment({ amount, orderId, cardData, customer, installments });
+            }
+        }
+
+        // Salvar info do gateway no pedido
+        if (orderId) {
+            const txnId = result.transaction_id || result.pix?.transaction_id;
+            await db.query(
+                `UPDATE orders SET
+                    billing_company_id = COALESCE($1, billing_company_id),
+                    payment_gateway_id = COALESCE($2, payment_gateway_id),
+                    gateway_type = COALESCE($3, gateway_type),
+                    gateway_transaction_id = COALESCE($4, gateway_transaction_id),
+                    gateway_status = COALESCE($5, gateway_status),
+                    ipag_transaction_id = COALESCE($4, ipag_transaction_id),
+                    ipag_status = COALESCE($5, ipag_status),
+                    payment_method = $6,
+                    updated_at = NOW()
+                WHERE id = $7`,
+                [
+                    usedBillingCompanyId,
+                    usedGateway?.id || null,
+                    usedGateway?.gateway_type || 'ipag',
+                    txnId,
+                    result.status || result.ipag_status,
+                    paymentMethod,
+                    orderId
+                ]
+            );
         }
 
         res.json(result);
@@ -2472,19 +2787,309 @@ app.put('/woocommerce/update-status', authenticateToken, async (req, res) => {
 });
 
 // =============================================
+// PAYMENTS - Available Methods (gateway-aware)
+// =============================================
+
+app.get('/payments/available-methods', authenticateToken, async (req, res) => {
+    try {
+        const { address_id, state: queryState } = req.query;
+        let state = queryState;
+
+        if (address_id && !state) {
+            const { rows } = await db.query('SELECT state FROM addresses WHERE id = $1', [address_id]);
+            if (rows.length > 0) state = rows[0].state;
+        }
+
+        const resolved = await billingService.resolveForState(state);
+
+        if (!resolved) {
+            // Nenhuma empresa configurada — retornar fallback iPag
+            return res.json({
+                availableMethods: ['credit_card', 'pix'],
+                billingCompanyName: null,
+                gatewayForCreditCard: { type: 'ipag', publicKey: null },
+                gatewayForPix: { type: 'ipag' },
+                useFallback: true
+            });
+        }
+
+        res.json({
+            availableMethods: resolved.availableMethods,
+            billingCompanyId: resolved.billingCompanyId,
+            billingCompanyName: resolved.billingCompanyName,
+            gatewayForCreditCard: resolved.gatewayForCreditCard,
+            gatewayForPix: resolved.gatewayForPix,
+            useFallback: false
+        });
+    } catch (err) {
+        console.error('Erro ao buscar metodos disponiveis:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// ADMIN - Billing Companies CRUD
+// =============================================
+
+app.get('/admin/billing-companies', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM billing_companies ORDER BY id');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/billing-companies', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { name, cnpj, razao_social, states, is_default } = req.body;
+        if (!name || !cnpj || !states || states.length === 0) {
+            return res.status(400).json({ error: 'name, cnpj e states sao obrigatorios' });
+        }
+
+        // Se is_default, desmarcar outras
+        if (is_default) {
+            await db.query('UPDATE billing_companies SET is_default = false');
+        }
+
+        const { rows } = await db.query(
+            `INSERT INTO billing_companies (name, cnpj, razao_social, states, is_default)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [name, cnpj, razao_social || null, states, is_default || false]
+        );
+        res.status(201).json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/admin/billing-companies/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { name, cnpj, razao_social, states, is_default, active } = req.body;
+
+        if (is_default) {
+            await db.query('UPDATE billing_companies SET is_default = false WHERE id != $1', [req.params.id]);
+        }
+
+        const { rows } = await db.query(
+            `UPDATE billing_companies SET
+                name = COALESCE($1, name),
+                cnpj = COALESCE($2, cnpj),
+                razao_social = COALESCE($3, razao_social),
+                states = COALESCE($4, states),
+                is_default = COALESCE($5, is_default),
+                active = COALESCE($6, active),
+                updated_at = NOW()
+             WHERE id = $7 RETURNING *`,
+            [name, cnpj, razao_social, states, is_default, active, req.params.id]
+        );
+
+        if (rows.length === 0) return res.status(404).json({ error: 'Empresa nao encontrada' });
+        res.json(rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/admin/billing-companies/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query('DELETE FROM billing_companies WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// =============================================
+// ADMIN - Payment Gateways CRUD
+// =============================================
+
+app.get('/admin/payment-gateways', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query(
+            `SELECT pg.*, bc.name as company_name
+             FROM payment_gateways pg
+             JOIN billing_companies bc ON bc.id = pg.billing_company_id
+             ORDER BY pg.billing_company_id, pg.priority DESC`
+        );
+
+        // Mascarar credenciais sensiveis
+        const masked = rows.map(gw => {
+            const creds = { ...gw.credentials };
+            for (const key of Object.keys(creds)) {
+                if (typeof creds[key] === 'string' && creds[key].length > 8) {
+                    creds[key] = '****' + creds[key].slice(-4);
+                }
+            }
+            return { ...gw, credentials_masked: creds, credentials: undefined };
+        });
+
+        res.json(masked);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/payment-gateways', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { billing_company_id, gateway_type, display_name, credentials, supported_methods, priority, sandbox } = req.body;
+
+        if (!billing_company_id || !gateway_type || !credentials) {
+            return res.status(400).json({ error: 'billing_company_id, gateway_type e credentials sao obrigatorios' });
+        }
+
+        const gwInfo = gatewayRouter.getGatewayInfo(gateway_type);
+        if (!gwInfo) return res.status(400).json({ error: `Gateway type "${gateway_type}" nao suportado` });
+
+        const methods = supported_methods || gwInfo.supportedMethods;
+
+        const { rows } = await db.query(
+            `INSERT INTO payment_gateways (billing_company_id, gateway_type, display_name, credentials, supported_methods, priority, sandbox)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [billing_company_id, gateway_type, display_name || gwInfo.name, credentials, methods, priority || 0, sandbox || false]
+        );
+
+        res.status(201).json({ ...rows[0], credentials: undefined });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(400).json({ error: 'Ja existe um gateway deste tipo para esta empresa' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.put('/admin/payment-gateways/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { display_name, credentials, supported_methods, priority, active, sandbox } = req.body;
+
+        // Se credentials vier com valores mascarados (****), manter os antigos
+        let finalCredentials = credentials;
+        if (credentials) {
+            const { rows: existing } = await db.query('SELECT credentials FROM payment_gateways WHERE id = $1', [req.params.id]);
+            if (existing.length > 0) {
+                const oldCreds = existing[0].credentials || {};
+                finalCredentials = { ...oldCreds };
+                for (const [key, value] of Object.entries(credentials)) {
+                    if (typeof value === 'string' && !value.startsWith('****')) {
+                        finalCredentials[key] = value;
+                    }
+                }
+            }
+        }
+
+        const { rows } = await db.query(
+            `UPDATE payment_gateways SET
+                display_name = COALESCE($1, display_name),
+                credentials = COALESCE($2, credentials),
+                supported_methods = COALESCE($3, supported_methods),
+                priority = COALESCE($4, priority),
+                active = COALESCE($5, active),
+                sandbox = COALESCE($6, sandbox),
+                updated_at = NOW()
+             WHERE id = $7 RETURNING *`,
+            [display_name, finalCredentials ? JSON.stringify(finalCredentials) : null, supported_methods, priority, active, sandbox, req.params.id]
+        );
+
+        if (rows.length === 0) return res.status(404).json({ error: 'Gateway nao encontrado' });
+        res.json({ ...rows[0], credentials: undefined });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.delete('/admin/payment-gateways/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        await db.query('DELETE FROM payment_gateways WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/payment-gateways/:id/test', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM payment_gateways WHERE id = $1', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Gateway nao encontrado' });
+
+        const gw = rows[0];
+        const gwService = gatewayRouter.getGateway(gw.gateway_type);
+        if (!gwService || !gwService.testConnection) {
+            return res.json({ success: false, message: 'Gateway nao suporta teste de conexao' });
+        }
+
+        const result = await gwService.testConnection(gw.credentials);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.get('/admin/gateway-types', authenticateToken, requireAdmin, async (req, res) => {
+    res.json(gatewayRouter.GATEWAY_INFO);
+});
+
+// =============================================
 // WEBHOOKS
 // =============================================
 
+// Legacy iPag webhook (redirect to new)
 app.post('/webhooks/ipag', async (req, res) => {
     try {
         console.log('iPag Webhook received:', JSON.stringify(req.body));
-        const { id, status, order_id } = req.body;
+        console.log('iPag Webhook query params:', JSON.stringify(req.query));
 
+        const { id, status, order_id } = req.body;
+        // O orderId pode vir no query param (configurado no url_retorno do iPag)
+        const fallbackOrderId = req.query.id;
+
+        // Detectar se pagamento aprovado
+        const statusStr = (status || '').toString().toLowerCase();
+        const isPaid = statusStr === 'approved' || statusStr === 'capturado' || statusStr === 'sucesso' ||
+            statusStr.includes('aprovad') || statusStr.includes('captur') ||
+            statusStr === '5' || statusStr === '8';
+
+        // Tentar encontrar o pedido por order_number (campo 'pedido' do iPag) ou por id direto
+        let order = null;
         if (order_id) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE order_number = $1', [order_id]);
+            if (rows.length > 0) order = rows[0];
+        }
+        if (!order && fallbackOrderId) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [fallbackOrderId]);
+            if (rows.length > 0) order = rows[0];
+        }
+
+        if (!order) {
+            console.warn('iPag Webhook: pedido nao encontrado. order_id:', order_id, 'fallback:', fallbackOrderId);
+            return res.sendStatus(200);
+        }
+
+        // Atualizar ipag_status e ipag_transaction_id
+        await db.query(
+            'UPDATE orders SET ipag_status = $1, ipag_transaction_id = COALESCE($2, ipag_transaction_id), updated_at = NOW() WHERE id = $3',
+            [status, id, order.id]
+        );
+
+        // Se pago e pedido ainda pending -> marcar como paid + pos-pagamento
+        if (isPaid && order.status === 'pending') {
             await db.query(
-                'UPDATE orders SET ipag_status = $1, ipag_transaction_id = $2, updated_at = NOW() WHERE order_number = $3',
-                [status, id, order_id]
+                "UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1",
+                [order.id]
             );
+            console.log(`iPag Webhook: pedido ${order.id} marcado como paid`);
+
+            const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+
+            // Sincronizar WC
+            if (order.woocommerce_order_id) {
+                try {
+                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing');
+                    console.log(`iPag Webhook: WC order ${order.woocommerce_order_id} status -> processing`);
+                } catch (wcErr) {
+                    console.error('Erro ao sincronizar WC via webhook:', wcErr.message);
+                }
+            }
         }
 
         res.sendStatus(200);
@@ -2510,6 +3115,153 @@ app.post('/webhooks/woocommerce', async (req, res) => {
     } catch (err) {
         console.error('Erro ao processar webhook WooCommerce:', err.message);
         res.sendStatus(500);
+    }
+});
+
+// =============================================
+// GATEWAY-SPECIFIC WEBHOOKS
+// =============================================
+
+app.post('/webhooks/gateway/ipag', async (req, res) => {
+    try {
+        console.log('iPag Gateway Webhook received:', JSON.stringify(req.body));
+        const ipagGateway = require('./gateways/ipagGateway');
+        const parsed = ipagGateway.parseWebhook(req);
+
+        let order = null;
+        if (parsed.orderNumber) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE order_number = $1', [parsed.orderNumber]);
+            if (rows.length > 0) order = rows[0];
+        }
+        if (!order && parsed.orderId) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [parsed.orderId]);
+            if (rows.length > 0) order = rows[0];
+        }
+
+        if (!order) {
+            console.warn('iPag Gateway Webhook: pedido nao encontrado');
+            return res.sendStatus(200);
+        }
+
+        await db.query(
+            'UPDATE orders SET ipag_status = $1, gateway_status = $1, ipag_transaction_id = COALESCE($2, ipag_transaction_id), gateway_transaction_id = COALESCE($2, gateway_transaction_id), updated_at = NOW() WHERE id = $3',
+            [parsed.status, parsed.transactionId, order.id]
+        );
+
+        if (parsed.isPaid && order.status === 'pending') {
+            await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
+            const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+
+            if (order.woocommerce_order_id) {
+                try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
+            }
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Erro webhook gateway/ipag:', err.message);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/webhooks/gateway/mercadopago', async (req, res) => {
+    try {
+        console.log('Mercado Pago Webhook received:', JSON.stringify(req.body));
+        const mpGateway = require('./gateways/mercadopagoGateway');
+        const parsed = mpGateway.parseWebhook(req);
+
+        if (!parsed || !parsed.transactionId) {
+            return res.sendStatus(200);
+        }
+
+        // Buscar pedido pela gateway_transaction_id
+        const { rows: orderRows } = await db.query(
+            "SELECT o.*, pg.credentials FROM orders o LEFT JOIN payment_gateways pg ON pg.id = o.payment_gateway_id WHERE o.gateway_transaction_id = $1 OR o.ipag_transaction_id = $1",
+            [parsed.transactionId]
+        );
+
+        let order = orderRows[0];
+
+        // Se needsFetch, buscar status completo da API do MP
+        if (parsed.needsFetch && order) {
+            const creds = order.credentials || {};
+            if (creds.access_token) {
+                const status = await mpGateway.verifyPaymentStatus(parsed.transactionId, creds);
+                const isPaid = status.status === 'paid';
+
+                await db.query(
+                    'UPDATE orders SET gateway_status = $1, ipag_status = $1, updated_at = NOW() WHERE id = $2',
+                    [status.gateway_status || status.status, order.id]
+                );
+
+                if (isPaid && order.status === 'pending') {
+                    await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
+                    const orderTotal = parseFloat(order.total) || 0;
+                    await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+
+                    if (order.woocommerce_order_id) {
+                        try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
+                    }
+                }
+            }
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Erro webhook gateway/mercadopago:', err.message);
+        res.sendStatus(200);
+    }
+});
+
+app.post('/webhooks/gateway/stripe', async (req, res) => {
+    try {
+        console.log('Stripe Webhook received');
+
+        // Buscar credenciais Stripe de qualquer gateway ativo
+        const { rows: gwRows } = await db.query(
+            "SELECT credentials FROM payment_gateways WHERE gateway_type = 'stripe' AND active = true LIMIT 1"
+        );
+
+        if (gwRows.length === 0) return res.sendStatus(200);
+
+        const stripeGateway = require('./gateways/stripeGateway');
+        const parsed = stripeGateway.parseWebhook(req, gwRows[0].credentials);
+
+        if (!parsed) return res.sendStatus(200);
+
+        // Buscar pedido
+        let order = null;
+        if (parsed.orderId) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [parsed.orderId]);
+            if (rows.length > 0) order = rows[0];
+        }
+        if (!order && parsed.transactionId) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE gateway_transaction_id = $1', [parsed.transactionId]);
+            if (rows.length > 0) order = rows[0];
+        }
+
+        if (!order) return res.sendStatus(200);
+
+        await db.query(
+            'UPDATE orders SET gateway_status = $1, ipag_status = $1, updated_at = NOW() WHERE id = $2',
+            [parsed.status, order.id]
+        );
+
+        if (parsed.isPaid && order.status === 'pending') {
+            await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
+            const orderTotal = parseFloat(order.total) || 0;
+            await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
+
+            if (order.woocommerce_order_id) {
+                try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
+            }
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Erro webhook gateway/stripe:', err.message);
+        res.sendStatus(200);
     }
 });
 

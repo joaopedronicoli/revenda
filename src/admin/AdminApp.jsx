@@ -8,7 +8,6 @@ import OrdersManagement from './pages/OrdersManagement'
 import UsersManagement from './pages/UsersManagement'
 import AbandonedCarts from './pages/AbandonedCarts'
 import RecoveryTemplates from './pages/RecoveryTemplates'
-import WebhookSettings from './pages/WebhookSettings'
 import AppSettings from './pages/AppSettings'
 import Documentation from './pages/Documentation'
 import CleanupDuplicates from './pages/CleanupDuplicates'
@@ -108,15 +107,7 @@ export default function AdminApp() {
                             </AdminProtectedRoute>
                         }
                     />
-                    <Route
-                        path="webhooks"
-                        element={
-                            <AdminProtectedRoute adminOnly>
-                                <WebhookSettings />
-                            </AdminProtectedRoute>
-                        }
-                    />
-                    <Route
+<Route
                         path="settings"
                         element={
                             <AdminProtectedRoute adminOnly>

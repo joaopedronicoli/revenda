@@ -6,7 +6,6 @@ import {
     Users,
     Package,
     Settings,
-    Bell,
     FileText,
     LogOut,
     ChevronLeft,
@@ -95,13 +94,7 @@ const menuItems = [
         path: '/admin/templates',
         adminOnly: true
     },
-    {
-        title: 'Webhooks',
-        icon: Bell,
-        path: '/admin/webhooks',
-        adminOnly: true
-    },
-    {
+{
         title: 'Configuracoes',
         icon: Settings,
         path: '/admin/settings',

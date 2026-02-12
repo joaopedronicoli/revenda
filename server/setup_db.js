@@ -170,6 +170,24 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "webhook_configurations" verificada/criada com sucesso.');
 
+    // Colunas extras de webhook_configurations
+    const webhookExtraCols = [
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS name VARCHAR(100)` },
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS events TEXT[] DEFAULT '{}'` },
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS last_triggered_at TIMESTAMP` },
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS last_status_code INTEGER` },
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS last_error TEXT` },
+      { sql: `ALTER TABLE webhook_configurations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` }
+    ];
+    for (const col of webhookExtraCols) {
+      try { await db.query(col.sql); } catch (e) { /* already exists */ }
+    }
+    // Migrar dados antigos: copiar type para events array
+    try {
+      await db.query(`UPDATE webhook_configurations SET events = ARRAY[type] WHERE (events = '{}' OR events IS NULL) AND type IS NOT NULL AND type != ''`);
+    } catch (e) { /* ignore */ }
+    console.log('Colunas extras de "webhook_configurations" verificadas.');
+
     // Templates de recuperacao
     await db.query(`
       CREATE TABLE IF NOT EXISTS recovery_templates (

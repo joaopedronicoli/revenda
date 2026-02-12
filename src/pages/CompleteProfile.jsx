@@ -212,44 +212,10 @@ export default function CompleteProfile() {
                 is_default: true
             })
 
-            // 3. Send webhook notification to n8n
-            try {
-                const webhookUrl = import.meta.env.VITE_N8N_REGISTRATION_WEBHOOK_URL
-                if (webhookUrl && user) {
-                    await fetch(webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: user.id,
-                            timestamp: new Date().toISOString(),
-                            source: 'complete-profile',
-                            name: user.name,
-                            email: user.email,
-                            whatsapp: getInternationalPhone(),
-                            documentType: formData.documentType,
-                            document: formData.documentType === 'cpf' ? formData.cpf : formData.cnpj,
-                            profession: formData.profession === 'Outra' ? formData.professionOther : formData.profession,
-                            address: {
-                                cep: formData.cep,
-                                street: formData.street,
-                                number: formData.number,
-                                complement: formData.complement,
-                                neighborhood: formData.neighborhood,
-                                city: formData.city,
-                                state: formData.uf
-                            },
-                            survey: formData.survey
-                        })
-                    })
-                }
-            } catch (webhookError) {
-                console.error('Webhook notification failed:', webhookError)
-            }
-
-            // 4. Refresh user data so isProfileComplete updates
+            // 3. Refresh user data so isProfileComplete updates
             await refreshUser()
 
-            // 5. Navigate back to where user came from
+            // 4. Navigate back to where user came from
             navigate(returnTo)
         } catch (err) {
             setError(err.response?.data?.message || err.message)

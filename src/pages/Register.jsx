@@ -261,39 +261,6 @@ export default function Register() {
 
             const { user } = await register(formData.email, formData.password, registrationData)
 
-            // Send webhook notification to n8n
-            try {
-                const webhookUrl = import.meta.env.VITE_N8N_REGISTRATION_WEBHOOK_URL
-                if (webhookUrl && user) {
-                    await fetch(webhookUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            userId: user.id,
-                            timestamp: new Date().toISOString(),
-                            name: formData.name,
-                            email: formData.email,
-                            whatsapp: getInternationalPhone(),
-                            documentType: formData.documentType,
-                            document: formData.documentType === 'cpf' ? formData.cpf : formData.cnpj,
-                            profession: formData.profession || formData.professionOther,
-                            address: {
-                                cep: formData.cep,
-                                street: formData.street,
-                                number: formData.number,
-                                complement: formData.complement,
-                                neighborhood: formData.neighborhood,
-                                city: formData.city,
-                                state: formData.uf
-                            },
-                            survey: formData.survey
-                        })
-                    })
-                }
-            } catch (webhookError) {
-                console.error('Webhook notification failed:', webhookError)
-            }
-
             // Mark conversion if referral code was used
             if (formData.referralCode) {
                 api.post('/referral/mark-conversion', { referralCode: formData.referralCode, referredUserId: user?.id }).catch(() => {})

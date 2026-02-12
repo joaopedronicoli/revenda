@@ -73,20 +73,6 @@ export default function Confirmation() {
                     } : null
                 }
 
-                // Send to n8n webhook
-                const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL
-                if (webhookUrl && webhookUrl.startsWith('http')) {
-                    try {
-                        await fetch(webhookUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(orderData)
-                        })
-                    } catch (webhookError) {
-                        console.error('Webhook error (non-blocking):', webhookError)
-                    }
-                }
-
                 // Save to API
                 await api.post('/orders', {
                     details: orderData,

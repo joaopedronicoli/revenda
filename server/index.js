@@ -338,8 +338,46 @@ async function processPostPaymentLogic(orderId, userId, orderTotal, orderDetails
                 [userId, purchasePoints, 'purchase', 'Pontos por compra', String(orderId)]
             );
         }
+
+        // Disparar webhook order_paid
+        dispatchWebhooks('order_paid', { order_id: orderId, user_id: userId, total: orderTotal, details: orderDetails }).catch(() => {});
     } catch (e) {
         console.error('Erro em processPostPaymentLogic:', e);
+    }
+}
+
+// Disparar webhooks para um evento (fire-and-forget)
+async function dispatchWebhooks(eventType, payload) {
+    try {
+        const { rows: webhooks } = await db.query(
+            'SELECT * FROM webhook_configurations WHERE active = true AND $1 = ANY(events)',
+            [eventType]
+        );
+        if (webhooks.length === 0) return;
+
+        const promises = webhooks.map(async (wh) => {
+            try {
+                const response = await axios.post(wh.url, {
+                    event: eventType,
+                    timestamp: new Date().toISOString(),
+                    data: payload
+                }, { timeout: 10000 });
+                await db.query(
+                    'UPDATE webhook_configurations SET last_triggered_at = NOW(), last_status_code = $1, last_error = NULL WHERE id = $2',
+                    [response.status, wh.id]
+                );
+            } catch (err) {
+                const statusCode = err.response?.status || null;
+                const errorMsg = err.message || 'Erro desconhecido';
+                await db.query(
+                    'UPDATE webhook_configurations SET last_triggered_at = NOW(), last_status_code = $1, last_error = $2 WHERE id = $3',
+                    [statusCode, errorMsg, wh.id]
+                ).catch(() => {});
+            }
+        });
+        await Promise.allSettled(promises);
+    } catch (e) {
+        console.error('Erro ao disparar webhooks:', e);
     }
 }
 
@@ -426,6 +464,10 @@ app.post('/users/sync', authenticateToken, async (req, res) => {
             [name, telefone, foto, document_type, cpf, cnpj, company_name,
              profession, profession_other, approval_status, role, req.user.id]
         );
+
+        // Disparar webhook user_registered
+        const u = rows[0];
+        dispatchWebhooks('user_registered', { user_id: u.id, name: u.name, email: u.email, telefone: u.telefone }).catch(() => {});
 
         res.json(rows[0]);
     } catch (err) {
@@ -1455,6 +1497,9 @@ app.post('/orders', authenticateToken, async (req, res) => {
 
         const newOrder = rows[0];
 
+        // Disparar webhook order_created
+        dispatchWebhooks('order_created', { order_id: newOrder.id, order_number: newOrder.order_number, total: newOrder.total, user_id: newOrder.user_id, details: newOrder.details }).catch(() => {});
+
         // Auto-criar pedido no WooCommerce
         try {
             // Buscar endereco para enviar ao WC
@@ -1861,6 +1906,7 @@ app.post('/abandoned-carts', authenticateToken, async (req, res) => {
                 `UPDATE abandoned_carts SET items = $1, total = $2, item_count = $3, status = 'abandoned', updated_at = NOW() WHERE user_id = $4 RETURNING *`,
                 [JSON.stringify(cartItems), cartTotal, cartItemCount, req.user.id]
             );
+            dispatchWebhooks('cart_abandoned', { cart_id: rows[0].id, user_id: req.user.id, total: cartTotal, item_count: cartItemCount, items: cartItems }).catch(() => {});
             return res.json(rows[0]);
         }
 
@@ -1869,6 +1915,7 @@ app.post('/abandoned-carts', authenticateToken, async (req, res) => {
             [req.user.id, JSON.stringify(cartItems), cartTotal, cartItemCount]
         );
 
+        dispatchWebhooks('cart_abandoned', { cart_id: rows[0].id, user_id: req.user.id, total: cartTotal, item_count: cartItemCount, items: cartItems }).catch(() => {});
         res.status(201).json(rows[0]);
     } catch (err) {
         console.error(err);
@@ -2448,7 +2495,18 @@ app.put('/admin/orders/:id', authenticateToken, requireAdmin, async (req, res) =
         );
 
         if (rows.length === 0) return res.status(404).json({ message: 'Pedido nao encontrado' });
-        res.json(rows[0]);
+
+        // Disparar webhooks conforme status
+        const updatedOrder = rows[0];
+        if (status === 'shipped') {
+            dispatchWebhooks('order_shipped', { order_id: updatedOrder.id, order_number: updatedOrder.order_number, tracking_code: updatedOrder.tracking_code, tracking_url: updatedOrder.tracking_url }).catch(() => {});
+        } else if (status === 'delivered') {
+            dispatchWebhooks('order_delivered', { order_id: updatedOrder.id, order_number: updatedOrder.order_number }).catch(() => {});
+        } else if (status === 'canceled') {
+            dispatchWebhooks('order_canceled', { order_id: updatedOrder.id, order_number: updatedOrder.order_number, total: updatedOrder.total }).catch(() => {});
+        }
+
+        res.json(updatedOrder);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao atualizar pedido' });
@@ -2554,11 +2612,12 @@ app.get('/admin/webhook-configurations', authenticateToken, requireAdmin, async 
 });
 
 app.post('/admin/webhook-configurations', authenticateToken, requireAdmin, async (req, res) => {
-    const { type, url, active } = req.body;
+    const { name, url, events, active } = req.body;
+    if (!url) return res.status(400).json({ message: 'URL e obrigatoria' });
     try {
         const { rows } = await db.query(
-            'INSERT INTO webhook_configurations (type, url, active) VALUES ($1, $2, $3) RETURNING *',
-            [type, url, active !== false]
+            'INSERT INTO webhook_configurations (name, url, events, active) VALUES ($1, $2, $3, $4) RETURNING *',
+            [name || null, url, events || [], active !== false]
         );
         res.status(201).json(rows[0]);
     } catch (err) {
@@ -2568,11 +2627,11 @@ app.post('/admin/webhook-configurations', authenticateToken, requireAdmin, async
 });
 
 app.put('/admin/webhook-configurations/:id', authenticateToken, requireAdmin, async (req, res) => {
-    const { type, url, active } = req.body;
+    const { name, url, events, active } = req.body;
     try {
         const { rows } = await db.query(
-            'UPDATE webhook_configurations SET type = $1, url = $2, active = $3 WHERE id = $4 RETURNING *',
-            [type, url, active, req.params.id]
+            'UPDATE webhook_configurations SET name = $1, url = $2, events = $3, active = $4, updated_at = NOW() WHERE id = $5 RETURNING *',
+            [name || null, url, events || [], active, req.params.id]
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Webhook nao encontrado' });
         res.json(rows[0]);
@@ -2591,6 +2650,49 @@ app.delete('/admin/webhook-configurations/:id', authenticateToken, requireAdmin,
         console.error(err);
         res.status(500).json({ message: 'Erro ao remover webhook' });
     }
+});
+
+// Testar webhook individual
+app.post('/admin/webhook-configurations/:id/test', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM webhook_configurations WHERE id = $1', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ message: 'Webhook nao encontrado' });
+        const wh = rows[0];
+        const testPayload = {
+            event: 'test',
+            timestamp: new Date().toISOString(),
+            data: { message: 'Teste de webhook', source: 'admin-panel' }
+        };
+        const response = await axios.post(wh.url, testPayload, { timeout: 10000 });
+        await db.query(
+            'UPDATE webhook_configurations SET last_triggered_at = NOW(), last_status_code = $1, last_error = NULL WHERE id = $2',
+            [response.status, wh.id]
+        );
+        res.json({ success: true, message: `Webhook respondeu com status ${response.status}` });
+    } catch (err) {
+        const statusCode = err.response?.status || null;
+        const errorMsg = err.message || 'Erro desconhecido';
+        try {
+            await db.query(
+                'UPDATE webhook_configurations SET last_triggered_at = NOW(), last_status_code = $1, last_error = $2 WHERE id = $3',
+                [statusCode, errorMsg, req.params.id]
+            );
+        } catch (_) {}
+        res.json({ success: false, message: `Erro: ${errorMsg}${statusCode ? ` (status ${statusCode})` : ''}` });
+    }
+});
+
+// Tipos de eventos disponiveis para webhooks
+app.get('/admin/webhook-event-types', authenticateToken, requireAdmin, (req, res) => {
+    res.json([
+        { value: 'order_created', label: 'Pedido Criado' },
+        { value: 'order_paid', label: 'Pedido Pago' },
+        { value: 'order_shipped', label: 'Pedido Enviado' },
+        { value: 'order_delivered', label: 'Pedido Entregue' },
+        { value: 'order_canceled', label: 'Pedido Cancelado' },
+        { value: 'cart_abandoned', label: 'Carrinho Abandonado' },
+        { value: 'user_registered', label: 'Usuario Cadastrado' }
+    ]);
 });
 
 // Recovery templates
@@ -3073,15 +3175,6 @@ const INTEGRATION_TYPES = {
         credentialFields: [
             { key: 'app_id', label: 'App ID', type: 'text' },
             { key: 'app_secret', label: 'App Secret', type: 'password' }
-        ]
-    },
-    n8n: {
-        name: 'N8N Webhooks',
-        description: 'URLs de webhooks N8N para automacoes',
-        testable: true,
-        credentialFields: [
-            { key: 'registration_webhook_url', label: 'Webhook de Cadastro', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' },
-            { key: 'order_webhook_url', label: 'Webhook de Pedido', type: 'text', placeholder: 'https://n8n.seudominio.com/webhook/...' }
         ]
     }
 };
@@ -3648,13 +3741,6 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
                 testResult = { success: true, message: `Pixel "${metaResp.data?.name || creds.pixel_id}" conectado via OAuth2!` };
                 break;
             }
-            case 'n8n': {
-                const webhookUrl = creds.registration_webhook_url || creds.order_webhook_url;
-                if (!webhookUrl) { testResult = { success: false, message: 'Nenhuma URL de webhook configurada' }; break; }
-                await axios.post(webhookUrl, { test: true, source: 'revenda-admin' }, { timeout: 10000 });
-                testResult = { success: true, message: 'Webhook N8N respondeu com sucesso!' };
-                break;
-            }
         }
 
         // Salvar resultado do teste
@@ -3671,31 +3757,6 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
             [JSON.stringify(failResult), req.params.type]
         ).catch(() => {});
         res.json(failResult);
-    }
-});
-
-// GET /public/n8n-webhooks — URLs de webhook N8N (sem auth)
-app.get('/public/n8n-webhooks', async (req, res) => {
-    try {
-        const { rows } = await db.query(
-            "SELECT credentials FROM integrations WHERE integration_type = 'n8n' AND active = true"
-        );
-        if (rows.length === 0) {
-            return res.json({
-                registration_webhook_url: process.env.VITE_N8N_REGISTRATION_WEBHOOK || null,
-                order_webhook_url: process.env.VITE_N8N_ORDER_WEBHOOK || null
-            });
-        }
-        const creds = rows[0].credentials || {};
-        res.json({
-            registration_webhook_url: creds.registration_webhook_url || null,
-            order_webhook_url: creds.order_webhook_url || null
-        });
-    } catch (err) {
-        res.json({
-            registration_webhook_url: process.env.VITE_N8N_REGISTRATION_WEBHOOK || null,
-            order_webhook_url: process.env.VITE_N8N_ORDER_WEBHOOK || null
-        });
     }
 });
 

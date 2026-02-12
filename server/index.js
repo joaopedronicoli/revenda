@@ -691,7 +691,7 @@ app.delete('/users/me', authenticateToken, async (req, res) => {
 // Public: list active products
 app.get('/products', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM products WHERE active = true ORDER BY sort_order ASC, id ASC');
+        const { rows } = await db.query('SELECT * FROM products WHERE active = true ORDER BY name ASC');
         res.json(rows);
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
@@ -705,7 +705,7 @@ app.get('/products', async (req, res) => {
 // Admin: list all products
 app.get('/admin/products', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM products ORDER BY sort_order ASC, id ASC');
+        const { rows } = await db.query('SELECT * FROM products ORDER BY active DESC, name ASC');
         res.json(rows);
     } catch (err) {
         console.error(err);
@@ -908,7 +908,7 @@ app.post('/admin/bling/sync-stock', authenticateToken, requireAdmin, async (req,
 
 app.get('/kits', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM products WHERE active = true AND is_kit = true ORDER BY sort_order ASC, id ASC');
+        const { rows } = await db.query('SELECT * FROM products WHERE active = true AND is_kit = true ORDER BY name ASC');
         // Map to KitSelector-compatible format
         const kits = rows.map(p => ({
             id: p.id,

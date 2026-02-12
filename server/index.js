@@ -713,30 +713,28 @@ app.get('/admin/products', authenticateToken, requireAdmin, async (req, res) => 
     }
 });
 
-// Admin: create product
-app.post('/admin/products', authenticateToken, requireAdmin, async (req, res) => {
-    const { name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, special_discount } = req.body;
-    try {
-        const { rows } = await db.query(
-            `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, special_discount)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
-            [name, description, table_price, image || null, reference_url || null, sku || null, woo_product_id || null, active !== false, sort_order || 0, special_discount || null]
-        );
-        res.status(201).json(rows[0]);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Erro ao criar produto' });
-    }
-});
-
-// Admin: update product
+// Admin: update product (simplified — only editable fields: active, sort_order, special_discount, is_kit)
 app.put('/admin/products/:id', authenticateToken, requireAdmin, async (req, res) => {
-    const { name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, special_discount } = req.body;
+    const { active, sort_order, special_discount, is_kit } = req.body;
     try {
+        const updates = [];
+        const values = [];
+        let paramCount = 0;
+
+        if (active !== undefined) { paramCount++; updates.push(`active = $${paramCount}`); values.push(active); }
+        if (sort_order !== undefined) { paramCount++; updates.push(`sort_order = $${paramCount}`); values.push(parseInt(sort_order) || 0); }
+        if (special_discount !== undefined) { paramCount++; updates.push(`special_discount = $${paramCount}`); values.push(special_discount ? parseFloat(special_discount) : null); }
+        if (is_kit !== undefined) { paramCount++; updates.push(`is_kit = $${paramCount}`); values.push(is_kit); }
+
+        if (updates.length === 0) return res.status(400).json({ message: 'Nenhum campo para atualizar' });
+
+        updates.push(`updated_at = NOW()`);
+        paramCount++;
+        values.push(req.params.id);
+
         const { rows } = await db.query(
-            `UPDATE products SET name = $1, description = $2, table_price = $3, image = $4, reference_url = $5, sku = $6, woo_product_id = $7, active = $8, sort_order = $9, special_discount = $10, updated_at = NOW()
-             WHERE id = $11 RETURNING *`,
-            [name, description, table_price, image || null, reference_url || null, sku || null, woo_product_id || null, active !== false, sort_order || 0, special_discount || null, req.params.id]
+            `UPDATE products SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+            values
         );
         if (rows.length === 0) return res.status(404).json({ message: 'Produto nao encontrado' });
         res.json(rows[0]);
@@ -746,15 +744,18 @@ app.put('/admin/products/:id', authenticateToken, requireAdmin, async (req, res)
     }
 });
 
-// Admin: delete product
-app.delete('/admin/products/:id', authenticateToken, requireAdmin, async (req, res) => {
+// Admin: toggle kit status
+app.put('/admin/products/:id/toggle-kit', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rowCount } = await db.query('DELETE FROM products WHERE id = $1', [req.params.id]);
-        if (rowCount === 0) return res.status(404).json({ message: 'Produto nao encontrado' });
-        res.json({ message: 'Produto excluido' });
+        const { rows } = await db.query(
+            `UPDATE products SET is_kit = NOT COALESCE(is_kit, false), updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [req.params.id]
+        );
+        if (rows.length === 0) return res.status(404).json({ message: 'Produto nao encontrado' });
+        res.json(rows[0]);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Erro ao excluir produto' });
+        res.status(500).json({ message: 'Erro ao alternar kit' });
     }
 });
 
@@ -789,7 +790,7 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
 
         for (const wcp of wcProducts) {
             const { rows: existing } = await db.query(
-                'SELECT id FROM products WHERE woo_product_id = $1',
+                'SELECT id, is_kit FROM products WHERE woo_product_id = $1',
                 [wcp.id]
             );
 
@@ -797,18 +798,25 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
             const price = parseFloat(wcp.price) || parseFloat(wcp.regular_price) || 0;
             const stockQty = wcp.stock_quantity || 0;
 
+            // Auto-detect kit by category or tag containing "kit" (case-insensitive)
+            const categories = (wcp.categories || []).map(c => c.name?.toLowerCase() || '');
+            const tags = (wcp.tags || []).map(t => t.name?.toLowerCase() || '');
+            const isKit = categories.some(c => c.includes('kit')) || tags.some(t => t.includes('kit'));
+
             if (existing.length > 0) {
+                // Preserve manually-set is_kit unless auto-detected as kit
+                const keepKit = existing[0].is_kit || isKit;
                 await db.query(
                     `UPDATE products SET name = $1, table_price = $2, image = $3, stock_quantity = $4,
-                     sku = $5, reference_url = $6, updated_at = NOW() WHERE woo_product_id = $7`,
-                    [wcp.name, price, image, stockQty, wcp.sku || null, wcp.permalink || null, wcp.id]
+                     sku = $5, reference_url = $6, is_kit = $7, updated_at = NOW() WHERE woo_product_id = $8`,
+                    [wcp.name, price, image, stockQty, wcp.sku || null, wcp.permalink || null, keepKit, wcp.id]
                 );
                 updated++;
             } else {
                 await db.query(
-                    `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, stock_quantity)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, true, 0, $8)`,
-                    [wcp.name, wcp.short_description || '', price, image, wcp.permalink || null, wcp.sku || null, wcp.id, stockQty]
+                    `INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, active, sort_order, stock_quantity, is_kit)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, true, 0, $8, $9)`,
+                    [wcp.name, wcp.short_description || '', price, image, wcp.permalink || null, wcp.sku || null, wcp.id, stockQty, isKit]
                 );
                 imported++;
             }
@@ -827,8 +835,19 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
 
 app.get('/kits', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM kits WHERE active = true ORDER BY price ASC');
-        res.json(rows);
+        const { rows } = await db.query('SELECT * FROM products WHERE active = true AND is_kit = true ORDER BY sort_order ASC, id ASC');
+        // Map to KitSelector-compatible format
+        const kits = rows.map(p => ({
+            id: p.id,
+            name: p.name,
+            slug: p.sku || p.name.toLowerCase().replace(/\s+/g, '-'),
+            price: parseFloat(p.table_price),
+            description: p.description,
+            features: p.kit_features || [],
+            image: p.image,
+            woo_product_id: p.woo_product_id
+        }));
+        res.json(kits);
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
             return res.json([]);

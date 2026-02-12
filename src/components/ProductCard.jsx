@@ -1,4 +1,4 @@
-import { Plus, Minus, Info } from 'lucide-react'
+import { Plus, Minus, Info, Package } from 'lucide-react'
 import { useCartStore } from '../store/cartStore'
 import { useAuth } from '../context/AuthContext'
 
@@ -76,8 +76,14 @@ export default function ProductCard({ product }) {
                         {quantity} no carrinho
                     </div>
                 )}
+                {/* Kit Badge */}
+                {product.isKit && (
+                    <div className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] uppercase font-bold px-2 py-1 rounded flex items-center gap-1">
+                        <Package size={10} /> Kit Inicial
+                    </div>
+                )}
                 {/* Special Discount Badge */}
-                {hasSpecialDiscount && (
+                {hasSpecialDiscount && !product.isKit && (
                     <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] uppercase font-bold px-2 py-1 rounded">
                         Oferta {Math.round((product.special_discount || discountModelat) * 100)}%
                     </div>

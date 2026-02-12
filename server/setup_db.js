@@ -281,10 +281,15 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "products" verificada/criada com sucesso.');
 
-    // Adicionar coluna stock_quantity se nao existir
-    try {
-        await db.query('ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT 0');
-    } catch (e) { /* column may already exist */ }
+    // Adicionar colunas extras em products
+    const productExtraColumns = [
+        { sql: "ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER DEFAULT 0" },
+        { sql: "ALTER TABLE products ADD COLUMN IF NOT EXISTS is_kit BOOLEAN DEFAULT false" },
+        { sql: "ALTER TABLE products ADD COLUMN IF NOT EXISTS kit_features TEXT[]" },
+    ];
+    for (const col of productExtraColumns) {
+        try { await db.query(col.sql); } catch (e) { /* column may already exist */ }
+    }
 
     // Kits
     await db.query(`

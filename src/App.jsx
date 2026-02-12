@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import Register from './pages/Register'
@@ -22,6 +22,7 @@ import AdminApp from './admin/AdminApp'
 
 const ProtectedRoute = ({ children, allowPending = false, allowUnverified = false, allowIncomplete = false }) => {
   const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified, isProfileComplete } = useAuth()
+  const location = useLocation()
 
   if (loading || roleLoading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>
 
@@ -32,7 +33,7 @@ const ProtectedRoute = ({ children, allowPending = false, allowUnverified = fals
 
   // Check profile completeness (document_type must exist)
   if (!allowIncomplete && !isProfileComplete) {
-    return <Navigate to="/complete-profile" />
+    return <Navigate to={`/complete-profile?returnTo=${encodeURIComponent(location.pathname)}`} />
   }
 
   // Check email verification

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, ChevronRight, Check, MapPin } from 'lucide-react'
 import api from '../services/api'
 
 export default function CompleteProfile() {
     const { user, refreshUser } = useAuth()
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const returnTo = searchParams.get('returnTo') || '/'
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState('')
     const [step, setStep] = useState(1)
@@ -199,6 +201,7 @@ export default function CompleteProfile() {
 
             // 2. Save address
             await api.post('/addresses', {
+                nickname: 'Principal',
                 cep: formData.cep,
                 street: formData.street,
                 number: formData.number,
@@ -246,8 +249,8 @@ export default function CompleteProfile() {
             // 4. Refresh user data so isProfileComplete updates
             await refreshUser()
 
-            // 5. Navigate to next step in flow
-            navigate('/')
+            // 5. Navigate back to where user came from
+            navigate(returnTo)
         } catch (err) {
             setError(err.response?.data?.message || err.message)
         } finally {

@@ -20,15 +20,14 @@ export default function ProductCard({ product }) {
     const { discountStandard, discountModelat } = getSummary()
 
     // Determine Rate for this product
+    const hasSpecialDiscount = product.special_discount != null || product.id === 8
     let discountRate = 0
     let discountedPrice = product.tablePrice
 
-    if (product.id === 8) {
-        // Modelat
-        discountRate = discountModelat
+    if (hasSpecialDiscount) {
+        discountRate = product.special_discount || discountModelat
         discountedPrice = product.tablePrice * (1 - discountRate)
     } else {
-        // Produtos normais - uses level-based discount
         discountRate = discountStandard
         discountedPrice = product.tablePrice * (1 - discountRate)
     }
@@ -77,10 +76,10 @@ export default function ProductCard({ product }) {
                         {quantity} no carrinho
                     </div>
                 )}
-                {/* Special Badge for Modelat */}
-                {product.id === 8 && (
+                {/* Special Discount Badge */}
+                {hasSpecialDiscount && (
                     <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] uppercase font-bold px-2 py-1 rounded">
-                        Oferta 70%
+                        Oferta {Math.round((product.special_discount || discountModelat) * 100)}%
                     </div>
                 )}
             </div>

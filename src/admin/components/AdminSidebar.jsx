@@ -23,6 +23,12 @@ const menuItems = [
         exact: true
     },
     {
+        title: 'Produtos',
+        icon: ShoppingBag,
+        path: '/admin/products',
+        adminOnly: true
+    },
+    {
         title: 'Pedidos',
         icon: Package,
         path: '/admin/orders'

@@ -13,6 +13,7 @@ import AppSettings from './pages/AppSettings'
 import Documentation from './pages/Documentation'
 import CleanupDuplicates from './pages/CleanupDuplicates'
 import AffiliateManagement from './pages/AffiliateManagement'
+import ProductManagement from './pages/ProductManagement'
 
 // Admin Protected Route
 function AdminProtectedRoute({ children, adminOnly = false }) {
@@ -47,6 +48,11 @@ export default function AdminApp() {
             <Routes>
                 <Route element={<AdminLayout />}>
                     <Route index element={<AdminDashboard />} />
+                    <Route path="products" element={
+                        <AdminProtectedRoute adminOnly>
+                            <ProductManagement />
+                        </AdminProtectedRoute>
+                    } />
                     <Route path="orders" element={<OrdersManagement />} />
                     <Route path="users" element={<UsersManagement />} />
                     <Route path="abandoned-carts" element={<AbandonedCarts />} />

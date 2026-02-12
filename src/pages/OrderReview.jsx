@@ -454,7 +454,7 @@ export default function OrderReview() {
                                         Para finalizar seu pedido, complete seu cadastro com seus dados pessoais (documento, telefone, etc).
                                     </p>
                                     <button
-                                        onClick={() => navigate('/complete-profile')}
+                                        onClick={() => navigate('/complete-profile?returnTo=/order-review')}
                                         className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
                                     >
                                         Completar cadastro

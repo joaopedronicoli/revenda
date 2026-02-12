@@ -1,11 +1,39 @@
-import { useState } from 'react'
-import { products } from '../data/products'
+import { useState, useEffect } from 'react'
+import { products as staticProducts } from '../data/products'
 import ProductCard from '../components/ProductCard'
 import CartFooter from '../components/CartFooter'
 import { Search } from 'lucide-react'
+import api from '../services/api'
+
+// Map API product (snake_case) to frontend format (camelCase)
+const mapProduct = (p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    tablePrice: parseFloat(p.table_price),
+    image: p.image,
+    imageDark: p.image,
+    reference_url: p.reference_url,
+    sku: p.sku,
+    woo_product_id: p.woo_product_id,
+    special_discount: p.special_discount ? parseFloat(p.special_discount) : null
+})
 
 export default function Dashboard() {
     const [searchTerm, setSearchTerm] = useState('')
+    const [products, setProducts] = useState(staticProducts)
+
+    useEffect(() => {
+        api.get('/products')
+            .then(({ data }) => {
+                if (data && data.length > 0) {
+                    setProducts(data.map(mapProduct))
+                }
+            })
+            .catch(() => {
+                // Fallback to static products
+            })
+    }, [])
 
     const filteredProducts = products.filter(product =>
         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

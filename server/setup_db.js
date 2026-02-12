@@ -238,6 +238,26 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "level_history" verificada/criada com sucesso.');
 
+    // Produtos
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        table_price DECIMAL(10,2) NOT NULL,
+        image TEXT,
+        reference_url TEXT,
+        sku VARCHAR(50),
+        woo_product_id INTEGER,
+        active BOOLEAN DEFAULT true,
+        sort_order INTEGER DEFAULT 0,
+        special_discount DECIMAL(5,2),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('Tabela "products" verificada/criada com sucesso.');
+
     // Kits
     await db.query(`
       CREATE TABLE IF NOT EXISTS kits (
@@ -294,6 +314,25 @@ const updateSchema = async () => {
       );
     `);
     console.log('Tabela "points_ledger" verificada/criada com sucesso.');
+
+    // =============================================
+    // SEEDS - Products
+    // =============================================
+    const productsCount = await db.query('SELECT COUNT(*) as cnt FROM products');
+    if (parseInt(productsCount.rows[0].cnt) === 0) {
+      await db.query(`
+        INSERT INTO products (name, description, table_price, image, reference_url, sku, woo_product_id, sort_order, special_discount) VALUES
+        ('Aloe Vera Gel de Babosa', 'Hidratacao profunda e calmante 250ml', 94.99, 'https://patriciaelias.com.br/wp-content/uploads/2020/08/800x800-aloe-vera1.webp', 'https://patriciaelias.com.br/produto/aloe-vera-gel-250ml/', '0200', 105884, 1, NULL),
+        ('Amazing Derme Serum', 'Serum creme facial anti-idade 50g', 142.99, 'https://patriciaelias.com.br/wp-content/uploads/2023/04/800x800-amazing-derme-Novo-Frente.jpg', 'https://patriciaelias.com.br/produto/amazing-derme-serum-creme-facial-50g/', '0256', 260692, 2, NULL),
+        ('Hair Care FBC Tonico', 'Tonico capilar fortalecedor 100ml', 143.99, 'https://patriciaelias.com.br/wp-content/uploads/2023/04/800x800-hair-care-fbc4.jpg', 'https://patriciaelias.com.br/produto/hair-care-fbc-tonico-capilar-100ml/', '0255', 260643, 3, NULL),
+        ('Lumi 10 Niacinamida', 'Serum iluminador facial 30ml', 129.99, 'https://patriciaelias.com.br/wp-content/uploads/2024/01/800x800-Lumi-10-Niacinamida.jpg', 'https://patriciaelias.com.br/produto/lumi-10-niacinamida-serum-iluminador-facial-30ml/', '0259', 300081, 4, NULL),
+        ('Oleo de Rosa Mosqueta Puro', 'Regenerador natural 20ml', 65.99, 'https://patriciaelias.com.br/wp-content/uploads/2023/11/800x800-rosa-mosqueta1.jpg', 'https://patriciaelias.com.br/produto/oleo-de-rosa-mosqueta-puro-20ml/', '0127', 81120, 5, NULL),
+        ('Purifique-C Sabonete Gel', 'Limpeza facial com Vitamina C', 60.99, 'https://patriciaelias.com.br/wp-content/uploads/2024/06/800x800-purifique-c.jpg', 'https://patriciaelias.com.br/produto/purifique-c-sabonete-gel-de-limpeza-facial/', '0260', 315653, 6, NULL),
+        ('Termaskin Tonico Facial', 'Agua termal remineralizante 120ml', 43.99, 'https://patriciaelias.com.br/wp-content/uploads/2023/10/800x800-termaskin1.jpg', 'https://patriciaelias.com.br/produto/termaskin-tonico-facial-e-agua-termal-120ml/', '0258', 288498, 7, NULL),
+        ('Modelat Mascara Lift', 'Efeito lift facial imediato (Oferta Especial)', 159.99, 'https://patriciaelias.com.br/wp-content/uploads/2025/10/800x800-mascara-lift-facial12.webp', 'https://patriciaelias.com.br/produto/modelat-mascara-lift-facial/', '0279', 385615, 8, 0.70)
+      `);
+      console.log('Seed de products inserido com sucesso.');
+    }
 
     // =============================================
     // SEEDS - Kits

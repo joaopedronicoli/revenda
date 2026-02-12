@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug, ExternalLink, Loader2 } from 'lucide-react'
+import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug, ExternalLink, Loader2, ChevronDown, Monitor } from 'lucide-react'
 import api from '../../services/api'
 
 const TYPE_ICONS = {
@@ -45,11 +45,10 @@ const FALLBACK_TYPES = {
         ]
     },
     meta: {
-        name: 'Meta / Facebook', description: 'Pixel do Facebook e API de Conversoes', testable: true,
+        name: 'Meta / Facebook', description: 'WhatsApp, Pixel e API de Conversoes via OAuth2', testable: true, oauth: true,
         credentialFields: [
-            { key: 'pixel_id', label: 'Pixel ID', type: 'text' },
-            { key: 'access_token', label: 'Access Token', type: 'password' },
-            { key: 'dataset_id', label: 'Dataset ID (opcional)', type: 'text' }
+            { key: 'app_id', label: 'App ID', type: 'text' },
+            { key: 'app_secret', label: 'App Secret', type: 'password' }
         ]
     },
     n8n: {
@@ -71,14 +70,21 @@ export default function Connections() {
     const [authorizingType, setAuthorizingType] = useState(null)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const [pixelDropdownOpen, setPixelDropdownOpen] = useState(false)
+    const [pixelsList, setPixelsList] = useState([])
+    const [loadingPixels, setLoadingPixels] = useState(false)
 
     useEffect(() => { loadData() }, [])
 
-    // Escutar mensagem do popup OAuth do Bling
+    // Escutar mensagem do popup OAuth (Bling e Meta)
     useEffect(() => {
         const handler = (event) => {
             if (event.data === 'bling-oauth-success') {
                 flashSuccess('Bling autorizado com sucesso!')
+                loadData()
+            }
+            if (event.data === 'meta-oauth-success') {
+                flashSuccess('Meta autorizado com sucesso!')
                 loadData()
             }
         }
@@ -168,14 +174,44 @@ export default function Connections() {
         }
     }
 
+    const handleLoadPixels = async () => {
+        setLoadingPixels(true)
+        try {
+            const { data } = await api.get('/admin/integrations/meta/pixels')
+            setPixelsList(Array.isArray(data) ? data : [])
+            setPixelDropdownOpen(true)
+        } catch (err) {
+            setError(err.response?.data?.error || err.message || 'Erro ao buscar pixels')
+        } finally {
+            setLoadingPixels(false)
+        }
+    }
+
+    const handleSelectPixel = async (pixel) => {
+        try {
+            await api.put('/admin/integrations/meta/pixel', {
+                pixel_id: pixel.id,
+                pixel_name: pixel.name
+            })
+            setPixelDropdownOpen(false)
+            setPixelsList([])
+            flashSuccess(`Pixel "${pixel.name}" selecionado!`)
+            loadData()
+        } catch (err) {
+            setError(err.response?.data?.error || err.message)
+        }
+    }
+
     const formatExpiry = (isoDate) => {
         if (!isoDate) return null
         const date = new Date(isoDate)
         const now = new Date()
         const diff = date.getTime() - now.getTime()
         if (diff <= 0) return 'Expirado'
-        const hours = Math.floor(diff / (1000 * 60 * 60))
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+        if (days > 0) return `Expira em ${days}d ${hours}h`
         if (hours > 0) return `Expira em ${hours}h${minutes}m`
         return `Expira em ${minutes}m`
     }
@@ -332,6 +368,16 @@ export default function Connections() {
                                                         {oauthOk ? 'OAuth OK' : 'Nao autorizado'}
                                                     </span>
                                                 )}
+                                                {type === 'meta' && isConfigured && oauthOk && (
+                                                    <span className={`px-2 py-0.5 text-xs rounded-full font-medium flex items-center gap-1 ${
+                                                        oauthStatus?.pixel_id ? 'bg-sky-100 text-sky-700' : 'bg-yellow-100 text-yellow-700'
+                                                    }`}>
+                                                        <Monitor size={12} />
+                                                        {oauthStatus?.pixel_id
+                                                            ? `Pixel: ${oauthStatus.pixel_name || oauthStatus.pixel_id}`
+                                                            : 'Pixel nao selecionado'}
+                                                    </span>
+                                                )}
                                             </div>
                                             <p className="text-sm text-slate-500 mt-0.5">{typeInfo.description}</p>
                                             {isConfigured && isOAuth && oauthStatus?.token_expires_at && (
@@ -349,7 +395,7 @@ export default function Connections() {
                                                         onClick={() => handleAuthorize(type)}
                                                         disabled={authorizingType === type}
                                                         className="p-2 text-orange-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
-                                                        title="Autorizar no Bling"
+                                                        title={`Autorizar no ${typeInfo.name}`}
                                                     >
                                                         {authorizingType === type ? (
                                                             <Loader2 size={16} className="animate-spin" />
@@ -414,6 +460,66 @@ export default function Connections() {
                                                 <span className="font-medium text-slate-500">{key}:</span> {val}
                                             </span>
                                         ))}
+                                    </div>
+                                )}
+
+                                {/* Meta Pixel Selector */}
+                                {type === 'meta' && isConfigured && oauthOk && editingType !== type && (
+                                    <div className="mt-3">
+                                        {oauthStatus?.pixel_id ? (
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-slate-500">
+                                                    <span className="font-medium">Pixel:</span> {oauthStatus.pixel_name || oauthStatus.pixel_id} ({oauthStatus.pixel_id})
+                                                </span>
+                                                <button
+                                                    onClick={handleLoadPixels}
+                                                    disabled={loadingPixels}
+                                                    className="text-xs text-sky-600 hover:text-sky-700 underline"
+                                                >
+                                                    {loadingPixels ? 'Carregando...' : 'Trocar'}
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={handleLoadPixels}
+                                                disabled={loadingPixels}
+                                                className="px-3 py-1.5 bg-sky-50 text-sky-700 border border-sky-200 rounded-lg text-xs font-medium hover:bg-sky-100 flex items-center gap-1.5 disabled:opacity-50"
+                                            >
+                                                {loadingPixels ? (
+                                                    <Loader2 size={14} className="animate-spin" />
+                                                ) : (
+                                                    <ChevronDown size={14} />
+                                                )}
+                                                Selecionar Pixel
+                                            </button>
+                                        )}
+                                        {pixelDropdownOpen && (
+                                            <div className="mt-2 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                                {pixelsList.length === 0 ? (
+                                                    <p className="p-3 text-xs text-slate-500 text-center">Nenhum pixel encontrado nas contas de anuncio.</p>
+                                                ) : (
+                                                    pixelsList.map(pixel => (
+                                                        <button
+                                                            key={pixel.id}
+                                                            onClick={() => handleSelectPixel(pixel)}
+                                                            className="w-full text-left px-3 py-2 text-xs hover:bg-sky-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                                                        >
+                                                            <span className="font-medium text-slate-800">{pixel.name}</span>
+                                                            <span className="text-slate-400 ml-2">({pixel.id})</span>
+                                                            {pixel.ad_account_name && (
+                                                                <span className="text-slate-400 ml-1">- {pixel.ad_account_name}</span>
+                                                            )}
+                                                        </button>
+                                                    ))
+                                                )}
+                                                <button
+                                                    onClick={() => { setPixelDropdownOpen(false); setPixelsList([]) }}
+                                                    className="w-full px-3 py-2 text-xs text-slate-500 hover:bg-slate-50 text-center font-medium"
+                                                >
+                                                    Fechar
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

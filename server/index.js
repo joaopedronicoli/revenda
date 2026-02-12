@@ -3067,12 +3067,12 @@ const INTEGRATION_TYPES = {
     },
     meta: {
         name: 'Meta / Facebook',
-        description: 'Pixel do Facebook e API de Conversoes',
+        description: 'WhatsApp, Pixel e API de Conversoes via OAuth2',
         testable: true,
+        oauth: true,
         credentialFields: [
-            { key: 'pixel_id', label: 'Pixel ID', type: 'text' },
-            { key: 'access_token', label: 'Access Token', type: 'password' },
-            { key: 'dataset_id', label: 'Dataset ID (opcional)', type: 'text' }
+            { key: 'app_id', label: 'App ID', type: 'text' },
+            { key: 'app_secret', label: 'App Secret', type: 'password' }
         ]
     },
     n8n: {
@@ -3089,7 +3089,7 @@ const INTEGRATION_TYPES = {
 // Helper: mascarar credenciais
 function maskCredentials(creds) {
     const masked = {};
-    const hideKeys = ['oauth_state']; // campos internos que nao devem aparecer
+    const hideKeys = ['oauth_state', 'token_expires_at', 'pixel_name']; // campos internos que nao devem aparecer
     for (const [key, value] of Object.entries(creds || {})) {
         if (hideKeys.includes(key)) continue;
         if (typeof value === 'string' && value.length > 8) {
@@ -3118,11 +3118,11 @@ app.get('/admin/integrations', authenticateToken, requireAdmin, async (req, res)
                 credentials_masked: maskCredentials(row.credentials),
                 credentials: undefined
             };
-            // Incluir status OAuth para bling
-            if (row.integration_type === 'bling') {
+            // Incluir status OAuth para integracoes com oauth: true
+            const typeInfo = INTEGRATION_TYPES[row.integration_type];
+            if (typeInfo?.oauth) {
                 const creds = row.credentials || {};
-                const typeInfo = INTEGRATION_TYPES.bling;
-                item.oauth = typeInfo.oauth;
+                item.oauth = true;
                 if (creds.access_token) {
                     const expiresAt = creds.token_expires_at ? new Date(creds.token_expires_at) : null;
                     const now = new Date();
@@ -3131,6 +3131,11 @@ app.get('/admin/integrations', authenticateToken, requireAdmin, async (req, res)
                         token_expires_at: creds.token_expires_at || null,
                         expired: expiresAt ? expiresAt <= now : false
                     };
+                    // Incluir pixel_id para meta
+                    if (row.integration_type === 'meta') {
+                        item.oauth_status.pixel_id = creds.pixel_id || null;
+                        item.oauth_status.pixel_name = creds.pixel_name || null;
+                    }
                 } else {
                     item.oauth_status = { authorized: false };
                 }
@@ -3349,6 +3354,194 @@ app.get('/admin/integrations/bling/callback', async (req, res) => {
     }
 });
 
+// =============================================
+// META OAuth2 — authorize, callback, pixels
+// =============================================
+
+const META_REDIRECT_URI = `${process.env.FRONTEND_URL || 'https://revenda.pelg.com.br'}/admin/integrations/meta/callback`;
+const META_SCOPES = 'ads_management,whatsapp_business_messaging,business_management';
+
+// GET /admin/integrations/meta/authorize — gerar URL OAuth Meta
+app.get('/admin/integrations/meta/authorize', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'meta'");
+        if (rows.length === 0) return res.status(400).json({ error: 'Configure o App ID e App Secret primeiro' });
+
+        const creds = rows[0].credentials || {};
+        if (!creds.app_id) return res.status(400).json({ error: 'App ID nao configurado' });
+
+        // Gerar state CSRF
+        const state = crypto.randomBytes(16).toString('hex');
+        await db.query(
+            `UPDATE integrations SET credentials = credentials || $1, updated_at = NOW() WHERE integration_type = 'meta'`,
+            [JSON.stringify({ oauth_state: state })]
+        );
+
+        const url = `https://www.facebook.com/v22.0/dialog/oauth?client_id=${encodeURIComponent(creds.app_id)}&redirect_uri=${encodeURIComponent(META_REDIRECT_URI)}&state=${state}&scope=${encodeURIComponent(META_SCOPES)}`;
+        res.json({ url });
+    } catch (err) {
+        console.error('Erro ao gerar URL Meta OAuth:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /admin/integrations/meta/callback — receber code do Meta
+app.get('/admin/integrations/meta/callback', async (req, res) => {
+    const { code, state, error_reason } = req.query;
+
+    if (error_reason) {
+        return res.status(400).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro na autorizacao Meta</h1>
+            <p>${String(error_reason).replace(/</g, '&lt;')}</p>
+            <script>setTimeout(() => window.close(), 3000);</script>
+            </body></html>
+        `);
+    }
+
+    if (!code) {
+        return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Codigo de autorizacao nao fornecido</h1></body></html>');
+    }
+
+    try {
+        // Validar state CSRF
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'meta'");
+        if (rows.length === 0) throw new Error('Integracao Meta nao encontrada');
+
+        const creds = rows[0].credentials || {};
+        if (creds.oauth_state && state !== creds.oauth_state) {
+            return res.status(400).send(`
+                <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+                <h1 style="color:#dc2626">Erro: state invalido</h1>
+                <p>Possivel tentativa de CSRF. Tente autorizar novamente.</p>
+                </body></html>
+            `);
+        }
+
+        if (!creds.app_id || !creds.app_secret) throw new Error('App ID e App Secret nao configurados');
+
+        // 1. Trocar code por short-lived token
+        const shortResp = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
+            params: {
+                client_id: creds.app_id,
+                client_secret: creds.app_secret,
+                redirect_uri: META_REDIRECT_URI,
+                code
+            },
+            timeout: 15000
+        });
+
+        const shortToken = shortResp.data.access_token;
+
+        // 2. Trocar short-lived por long-lived token (60 dias)
+        const longResp = await axios.get('https://graph.facebook.com/v22.0/oauth/access_token', {
+            params: {
+                grant_type: 'fb_exchange_token',
+                client_id: creds.app_id,
+                client_secret: creds.app_secret,
+                fb_exchange_token: shortToken
+            },
+            timeout: 15000
+        });
+
+        const longToken = longResp.data.access_token;
+        const expiresIn = longResp.data.expires_in || 5184000; // 60 dias padrao
+        const tokenExpiresAt = new Date(Date.now() + (expiresIn * 1000)).toISOString();
+
+        // Salvar long-lived token e limpar oauth_state
+        await db.query(
+            `UPDATE integrations SET credentials = (credentials - 'oauth_state') || $1, updated_at = NOW() WHERE integration_type = 'meta'`,
+            [JSON.stringify({ access_token: longToken, token_expires_at: tokenExpiresAt })]
+        );
+
+        res.send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#16a34a">Meta autorizado com sucesso!</h1>
+            <p>Pode fechar esta aba. A pagina de conexoes sera atualizada automaticamente.</p>
+            <script>
+                if (window.opener) { window.opener.postMessage('meta-oauth-success', '*'); }
+                setTimeout(() => window.close(), 3000);
+            </script>
+            </body></html>
+        `);
+    } catch (err) {
+        console.error('Erro callback Meta OAuth:', err.response?.data || err.message);
+        res.status(500).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro ao conectar Meta</h1>
+            <p>${String(err.response?.data?.error?.message || err.message).replace(/</g, '&lt;')}</p>
+            </body></html>
+        `);
+    }
+});
+
+// GET /admin/integrations/meta/pixels — listar pixels disponiveis
+app.get('/admin/integrations/meta/pixels', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'meta'");
+        if (rows.length === 0) return res.status(400).json({ error: 'Meta nao configurado' });
+
+        const creds = rows[0].credentials || {};
+        if (!creds.access_token) return res.status(400).json({ error: 'Meta nao autorizado. Autorize primeiro.' });
+
+        // Buscar ad accounts
+        const accountsResp = await axios.get('https://graph.facebook.com/v22.0/me/adaccounts', {
+            params: { fields: 'id,name,account_id', access_token: creds.access_token, limit: 100 },
+            timeout: 15000
+        });
+
+        const adAccounts = accountsResp.data?.data || [];
+        const pixels = [];
+
+        // Para cada ad account, buscar pixels
+        for (const account of adAccounts) {
+            try {
+                const pixelsResp = await axios.get(`https://graph.facebook.com/v22.0/${account.id}/adspixels`, {
+                    params: { fields: 'id,name', access_token: creds.access_token },
+                    timeout: 10000
+                });
+                const accountPixels = pixelsResp.data?.data || [];
+                for (const pixel of accountPixels) {
+                    pixels.push({
+                        id: pixel.id,
+                        name: pixel.name,
+                        ad_account_name: account.name || account.account_id
+                    });
+                }
+            } catch (pixelErr) {
+                // Ignorar ad accounts sem permissao de pixel
+                console.warn(`Nao foi possivel buscar pixels da conta ${account.id}:`, pixelErr.response?.data?.error?.message || pixelErr.message);
+            }
+        }
+
+        res.json(pixels);
+    } catch (err) {
+        console.error('Erro ao listar pixels Meta:', err.response?.data || err.message);
+        res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+    }
+});
+
+// PUT /admin/integrations/meta/pixel — salvar pixel selecionado
+app.put('/admin/integrations/meta/pixel', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { pixel_id, pixel_name, dataset_id } = req.body;
+        if (!pixel_id) return res.status(400).json({ error: 'pixel_id e obrigatorio' });
+
+        const update = { pixel_id, pixel_name: pixel_name || null };
+        if (dataset_id !== undefined) update.dataset_id = dataset_id;
+
+        await db.query(
+            `UPDATE integrations SET credentials = credentials || $1, updated_at = NOW() WHERE integration_type = 'meta'`,
+            [JSON.stringify(update)]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Erro ao salvar pixel Meta:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // POST /admin/integrations/:type/test — testar conexao
 app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -3406,14 +3599,19 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
                 break;
             }
             case 'meta': {
-                if (!creds.pixel_id || !creds.access_token) {
-                    testResult = { success: false, message: 'Pixel ID e Access Token sao obrigatorios' }; break;
+                if (!creds.access_token) {
+                    testResult = { success: false, message: 'Meta nao autorizado. Clique em "Autorizar no Meta".' };
+                    break;
                 }
-                const resp = await axios.get(`https://graph.facebook.com/v18.0/${creds.pixel_id}`, {
+                if (!creds.pixel_id) {
+                    testResult = { success: false, message: 'Pixel nao selecionado. Selecione um pixel.' };
+                    break;
+                }
+                const metaResp = await axios.get(`https://graph.facebook.com/v22.0/${creds.pixel_id}`, {
                     params: { access_token: creds.access_token },
                     timeout: 10000
                 });
-                testResult = { success: true, message: `Pixel "${resp.data?.name || creds.pixel_id}" conectado!` };
+                testResult = { success: true, message: `Pixel "${metaResp.data?.name || creds.pixel_id}" conectado via OAuth2!` };
                 break;
             }
             case 'n8n': {

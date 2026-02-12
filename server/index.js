@@ -3258,6 +3258,40 @@ async function refreshBlingToken(integrationType) {
     return access_token;
 }
 
+// Auto-refresh: renova token do Bling automaticamente quando falta 1h para expirar
+async function autRefreshBlingToken() {
+    try {
+        const { rows } = await db.query(
+            "SELECT credentials FROM integrations WHERE integration_type = 'bling' AND active = true"
+        );
+        if (rows.length === 0) return;
+
+        const creds = rows[0].credentials || {};
+        if (!creds.access_token || !creds.refresh_token) return;
+
+        const expiresAt = creds.token_expires_at ? new Date(creds.token_expires_at) : null;
+        if (!expiresAt) return;
+
+        const now = new Date();
+        const msUntilExpiry = expiresAt.getTime() - now.getTime();
+        const oneHour = 60 * 60 * 1000;
+
+        // Renova se falta menos de 1 hora para expirar (ou ja expirou)
+        if (msUntilExpiry < oneHour) {
+            console.log(`[AutoRefresh Bling] Token expira em ${Math.round(msUntilExpiry / 60000)}min, renovando...`);
+            await refreshBlingToken('bling');
+            console.log('[AutoRefresh Bling] Token renovado com sucesso!');
+        }
+    } catch (err) {
+        console.error('[AutoRefresh Bling] Erro ao renovar token:', err.message);
+    }
+}
+
+// Rodar auto-refresh a cada 30 minutos
+setInterval(autRefreshBlingToken, 30 * 60 * 1000);
+// Rodar uma vez no boot (com delay de 10s para o banco estar pronto)
+setTimeout(autRefreshBlingToken, 10000);
+
 // GET /admin/integrations/bling/authorize — gerar URL OAuth
 app.get('/admin/integrations/bling/authorize', authenticateToken, requireAdmin, async (req, res) => {
     try {

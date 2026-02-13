@@ -423,6 +423,13 @@ const updateSchema = async () => {
       ON CONFLICT (key) DO NOTHING;
     `);
 
+    // Seed: cupom de teste TESTE1REAL (total final = R$ 1,00)
+    await db.query(`
+      INSERT INTO affiliate_coupons (code, discount_type, discount_value, min_order_value, active)
+      VALUES ('TESTE1REAL', 'fixed', 999999, 0, true)
+      ON CONFLICT (code) DO NOTHING;
+    `);
+
     // =============================================
     // SEEDS - Products
     // =============================================

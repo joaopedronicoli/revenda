@@ -1770,7 +1770,7 @@ app.post('/orders', authenticateToken, async (req, res) => {
 });
 
 app.put('/orders/:id', authenticateToken, async (req, res) => {
-    const { status, tracking_code, tracking_url, ipag_transaction_id, ipag_status, woocommerce_order_id, woocommerce_order_number } = req.body;
+    const { status, tracking_code, tracking_url, ipag_transaction_id, ipag_status, woocommerce_order_id, woocommerce_order_number, total, coupon_code, coupon_discount } = req.body;
 
     try {
         const updates = [];
@@ -1778,12 +1778,23 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
         let paramCount = 0;
 
         if (status !== undefined) { paramCount++; updates.push(`status = $${paramCount}`); values.push(status); }
+        if (total !== undefined) { paramCount++; updates.push(`total = $${paramCount}`); values.push(total); }
         if (tracking_code !== undefined) { paramCount++; updates.push(`tracking_code = $${paramCount}`); values.push(tracking_code); }
         if (tracking_url !== undefined) { paramCount++; updates.push(`tracking_url = $${paramCount}`); values.push(tracking_url); }
         if (ipag_transaction_id !== undefined) { paramCount++; updates.push(`ipag_transaction_id = $${paramCount}`); values.push(ipag_transaction_id); }
         if (ipag_status !== undefined) { paramCount++; updates.push(`ipag_status = $${paramCount}`); values.push(ipag_status); }
         if (woocommerce_order_id !== undefined) { paramCount++; updates.push(`woocommerce_order_id = $${paramCount}`); values.push(woocommerce_order_id); }
         if (woocommerce_order_number !== undefined) { paramCount++; updates.push(`woocommerce_order_number = $${paramCount}`); values.push(woocommerce_order_number); }
+        if (coupon_code !== undefined) {
+            paramCount++;
+            updates.push(`details = jsonb_set(COALESCE(details, '{}')::jsonb, '{coupon_code}', $${paramCount}::jsonb)`);
+            values.push(JSON.stringify(coupon_code));
+        }
+        if (coupon_discount !== undefined) {
+            paramCount++;
+            updates.push(`details = jsonb_set(COALESCE(details, '{}')::jsonb, '{coupon_discount}', $${paramCount}::jsonb)`);
+            values.push(JSON.stringify(coupon_discount));
+        }
 
         if (updates.length === 0) {
             return res.status(400).json({ message: 'Nenhum campo para atualizar' });
@@ -5300,7 +5311,7 @@ app.post('/coupons/validate', async (req, res) => {
         } else {
             discountAmount = parseFloat(coupon.discount_value);
         }
-        discountAmount = Math.min(discountAmount, total);
+        discountAmount = Math.min(discountAmount, Math.max(total - 1, 0)); // Deixar minimo R$ 1,00
 
         res.json({
             valid: true,

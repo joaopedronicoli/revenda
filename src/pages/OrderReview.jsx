@@ -243,6 +243,15 @@ export default function OrderReview() {
             const { data } = await api.post('/coupons/validate', { code: couponCode, orderTotal: total })
             if (data.valid) {
                 setCouponResult(data)
+                // Atualizar total do pedido com desconto do cupom
+                if (paymentData?.orderId) {
+                    const newTotal = Math.max(total - parseFloat(data.discountAmount), 1)
+                    await api.put(`/orders/${paymentData.orderId}`, {
+                        total: newTotal,
+                        coupon_code: couponCode.toUpperCase(),
+                        coupon_discount: parseFloat(data.discountAmount)
+                    }).catch(() => {})
+                }
             } else {
                 setCouponError(data.message || 'Cupom invalido')
             }
@@ -253,7 +262,16 @@ export default function OrderReview() {
         }
     }
 
-    const removeCoupon = () => {
+    const removeCoupon = async () => {
+        // Reverter total do pedido
+        if (paymentData?.orderId) {
+            const total = getSummary().totalWithDiscount
+            await api.put(`/orders/${paymentData.orderId}`, {
+                total,
+                coupon_code: null,
+                coupon_discount: 0
+            }).catch(() => {})
+        }
         setCouponResult(null)
         setCouponCode('')
         setCouponError('')
@@ -587,7 +605,7 @@ export default function OrderReview() {
                                     </div>
                                 )}
                                 <PaymentSelector
-                                    total={Math.round((parseFloat(summary.totalWithDiscount) || 0) * 100)} // Converter para centavos
+                                    total={Math.round(Math.max((parseFloat(summary.totalWithDiscount) - parseFloat(couponResult?.discountAmount || 0)) * 100, 100))} // Converter para centavos, minimo R$1
                                     customer={{
                                         name: user?.name,
                                         email: user?.email,
@@ -719,7 +737,7 @@ export default function OrderReview() {
                             <div className="flex justify-between items-center mb-6">
                                 <span className="text-lg font-semibold text-slate-900">Total</span>
                                 <span className="text-2xl font-bold text-primary">
-                                    {formatCurrency(summary.totalWithDiscount)}
+                                    {formatCurrency(Math.max(summary.totalWithDiscount - parseFloat(couponResult?.discountAmount || 0), 1))}
                                 </span>
                             </div>
 

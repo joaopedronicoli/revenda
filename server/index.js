@@ -2336,46 +2336,183 @@ app.post('/cron/check-referral-activity', async (req, res) => {
 
 app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const [usersCount, ordersCount, pendingApprovals, recentOrders, levelStats] = await Promise.all([
-            db.query('SELECT COUNT(*) as total FROM users'),
-            db.query('SELECT COUNT(*) as total FROM orders'),
-            db.query("SELECT COUNT(*) as total FROM users WHERE approval_status = 'pending'"),
-            db.query('SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 10'),
+        const { dateRange, customStartDate, customEndDate } = req.query;
+
+        // Build date filter based on dateRange param
+        const now = new Date();
+        let dateFilterSQL = '';
+        let dateFilterParams = [];
+        let paramOffset = 0;
+
+        if (dateRange === 'today') {
+            paramOffset = 1;
+            dateFilterSQL = ` AND o.created_at >= $${paramOffset}::date`;
+            dateFilterParams = [now.toISOString().split('T')[0]];
+        } else if (dateRange === 'week') {
+            const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+            paramOffset = 1;
+            dateFilterSQL = ` AND o.created_at >= $${paramOffset}`;
+            dateFilterParams = [weekAgo.toISOString()];
+        } else if (dateRange === 'month' || !dateRange) {
+            const monthAgo = new Date(now); monthAgo.setDate(monthAgo.getDate() - 30);
+            paramOffset = 1;
+            dateFilterSQL = ` AND o.created_at >= $${paramOffset}`;
+            dateFilterParams = [monthAgo.toISOString()];
+        } else if (dateRange === '90days') {
+            const d90 = new Date(now); d90.setDate(d90.getDate() - 90);
+            paramOffset = 1;
+            dateFilterSQL = ` AND o.created_at >= $${paramOffset}`;
+            dateFilterParams = [d90.toISOString()];
+        } else if (dateRange === 'year') {
+            const yearAgo = new Date(now); yearAgo.setFullYear(yearAgo.getFullYear() - 1);
+            paramOffset = 1;
+            dateFilterSQL = ` AND o.created_at >= $${paramOffset}`;
+            dateFilterParams = [yearAgo.toISOString()];
+        } else if (dateRange === 'custom' && customStartDate && customEndDate) {
+            paramOffset = 2;
+            dateFilterSQL = ` AND o.created_at >= $1::date AND o.created_at <= $2::date + INTERVAL '1 day'`;
+            dateFilterParams = [customStartDate, customEndDate];
+        }
+        // dateRange === 'all' -> no filter
+
+        // Sales metrics
+        const todayStr = now.toISOString().split('T')[0];
+        const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
+        const monthAgo = new Date(now); monthAgo.setDate(monthAgo.getDate() - 30);
+
+        const [salesResult, ordersResult, usersResult, abandonedResult, levelStats, recentOrdersResult, salesChartResult, topCustomersResult, crmResult] = await Promise.all([
+            // Sales: today, week, month, total
+            db.query(`
+                SELECT
+                    COALESCE(SUM(CASE WHEN created_at >= $1::date THEN total::numeric ELSE 0 END), 0) as today,
+                    COALESCE(SUM(CASE WHEN created_at >= $2 THEN total::numeric ELSE 0 END), 0) as week,
+                    COALESCE(SUM(CASE WHEN created_at >= $3 THEN total::numeric ELSE 0 END), 0) as month,
+                    COALESCE(SUM(total::numeric), 0) as total
+                FROM orders WHERE status IN ('paid', 'shipped', 'delivered')
+            `, [todayStr, weekAgo.toISOString(), monthAgo.toISOString()]),
+
+            // Orders by status (with date filter)
+            db.query(`
+                SELECT status, COUNT(*) as cnt
+                FROM orders WHERE 1=1 ${dateFilterSQL}
+                GROUP BY status
+            `, dateFilterParams),
+
+            // Users
+            db.query(`
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN approval_status = 'pending' THEN 1 END) as pending,
+                    COUNT(CASE WHEN approval_status = 'approved' THEN 1 END) as approved,
+                    COUNT(CASE WHEN created_at >= $1 THEN 1 END) as new_this_month
+                FROM users
+            `, [monthAgo.toISOString()]),
+
+            // Abandoned carts
+            db.query(`
+                SELECT COUNT(*) as count, COALESCE(SUM(estimated_total::numeric), 0) as value
+                FROM abandoned_carts WHERE recovered = false
+            `).catch(() => ({ rows: [{ count: 0, value: 0 }] })),
+
+            // Level distribution
             db.query("SELECT level, COUNT(*) as cnt FROM users WHERE approval_status = 'approved' GROUP BY level")
+                .catch(() => ({ rows: [] })),
+
+            // Recent orders
+            db.query(`
+                SELECT o.id, o.order_number, o.total, o.status, o.created_at, u.name as user_name, u.email as user_email
+                FROM orders o JOIN users u ON o.user_id = u.id
+                ORDER BY o.created_at DESC LIMIT 10
+            `),
+
+            // Sales chart (last 7 days)
+            db.query(`
+                SELECT DATE(created_at) as day, COALESCE(SUM(total::numeric), 0) as vendas
+                FROM orders
+                WHERE status IN ('paid', 'shipped', 'delivered') AND created_at >= $1
+                GROUP BY DATE(created_at)
+                ORDER BY day
+            `, [weekAgo.toISOString()]),
+
+            // Top 10 customers
+            db.query(`
+                SELECT o.user_id, u.name, u.email, u.telefone as whatsapp,
+                    SUM(o.total::numeric) as "totalSpent",
+                    COUNT(*) as "orderCount",
+                    MIN(o.created_at) as "firstPurchase",
+                    MAX(o.created_at) as "lastPurchase"
+                FROM orders o JOIN users u ON o.user_id = u.id
+                WHERE o.status IN ('paid', 'shipped', 'delivered')
+                GROUP BY o.user_id, u.name, u.email, u.telefone
+                ORDER BY "totalSpent" DESC LIMIT 10
+            `),
+
+            // CRM: avg ticket, conversion rate, repeat customers, LTV
+            db.query(`
+                SELECT
+                    COALESCE(AVG(total::numeric), 0) as avg_ticket,
+                    (SELECT COUNT(DISTINCT user_id) FROM orders WHERE status IN ('paid', 'shipped', 'delivered')) as buyers,
+                    (SELECT COUNT(*) FROM users WHERE approval_status = 'approved') as approved_users,
+                    (SELECT COUNT(*) FROM (SELECT user_id FROM orders WHERE status IN ('paid', 'shipped', 'delivered') GROUP BY user_id HAVING COUNT(*) >= 2) sub) as repeat_customers,
+                    COALESCE((SELECT AVG(user_total) FROM (SELECT SUM(total::numeric) as user_total FROM orders WHERE status IN ('paid', 'shipped', 'delivered') GROUP BY user_id) sub2), 0) as ltv
+                FROM orders WHERE status IN ('paid', 'shipped', 'delivered')
+            `)
         ]);
 
-        const levelDistribution = {};
+        // Process orders by status
+        const ordersByStatus = { pending: 0, paid: 0, shipped: 0, delivered: 0, total: 0 };
+        ordersResult.rows.forEach(r => {
+            const s = r.status;
+            if (ordersByStatus.hasOwnProperty(s)) ordersByStatus[s] = parseInt(r.cnt);
+            ordersByStatus.total += parseInt(r.cnt);
+        });
+
+        // Process level distribution
+        const levelDistribution = { bronze: 0, prata: 0, ouro: 0 };
         levelStats.rows.forEach(r => { levelDistribution[r.level || 'bronze'] = parseInt(r.cnt); });
 
+        // Process sales chart
+        const salesChart = salesChartResult.rows.map(r => ({
+            name: new Date(r.day).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+            vendas: parseFloat(r.vendas)
+        }));
+
+        // Process CRM
+        const crmRow = crmResult.rows[0] || {};
+        const approvedUsers = parseInt(crmRow.approved_users) || 1;
+        const buyers = parseInt(crmRow.buyers) || 0;
+
         res.json({
-            totalUsers: parseInt(usersCount.rows[0].total),
-            totalOrders: parseInt(ordersCount.rows[0].total),
-            pendingApprovals: parseInt(pendingApprovals.rows[0].total),
-            recentOrders: recentOrders.rows,
-            levelDistribution
+            sales: {
+                today: parseFloat(salesResult.rows[0].today),
+                week: parseFloat(salesResult.rows[0].week),
+                month: parseFloat(salesResult.rows[0].month),
+                total: parseFloat(salesResult.rows[0].total)
+            },
+            orders: ordersByStatus,
+            users: {
+                total: parseInt(usersResult.rows[0].total),
+                pending: parseInt(usersResult.rows[0].pending),
+                approved: parseInt(usersResult.rows[0].approved),
+                newThisMonth: parseInt(usersResult.rows[0].new_this_month)
+            },
+            abandonedCarts: {
+                count: parseInt(abandonedResult.rows[0].count) || 0,
+                value: parseFloat(abandonedResult.rows[0].value) || 0
+            },
+            crm: {
+                avgTicket: parseFloat(crmRow.avg_ticket) || 0,
+                conversionRate: approvedUsers > 0 ? (buyers / approvedUsers) * 100 : 0,
+                repeatCustomers: parseInt(crmRow.repeat_customers) || 0,
+                lifetimeValue: parseFloat(crmRow.ltv) || 0
+            },
+            levelDistribution,
+            recentOrders: recentOrdersResult.rows,
+            salesChart,
+            topCustomers: topCustomersResult.rows
         });
     } catch (err) {
-        // Fallback if level column doesn't exist yet
-        if (err.message && err.message.includes('does not exist')) {
-            try {
-                const [usersCount, ordersCount, pendingApprovals, recentOrders] = await Promise.all([
-                    db.query('SELECT COUNT(*) as total FROM users'),
-                    db.query('SELECT COUNT(*) as total FROM orders'),
-                    db.query("SELECT COUNT(*) as total FROM users WHERE approval_status = 'pending'"),
-                    db.query('SELECT o.*, u.name as user_name, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 10')
-                ]);
-                return res.json({
-                    totalUsers: parseInt(usersCount.rows[0].total),
-                    totalOrders: parseInt(ordersCount.rows[0].total),
-                    pendingApprovals: parseInt(pendingApprovals.rows[0].total),
-                    recentOrders: recentOrders.rows,
-                    levelDistribution: {}
-                });
-            } catch (fallbackErr) {
-                console.error(fallbackErr);
-            }
-        }
-        console.error(err);
+        console.error('Dashboard error:', err);
         res.status(500).json({ message: 'Erro ao buscar dados do dashboard' });
     }
 });

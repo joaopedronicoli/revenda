@@ -81,7 +81,15 @@ export default function AppSettings() {
             const settingsMap = {}
             if (Array.isArray(data)) {
                 data.forEach(s => {
-                    settingsMap[s.key] = s.value
+                    // Convert string booleans and numbers to proper types
+                    const config = settingsConfig[s.key]
+                    if (config?.type === 'boolean') {
+                        settingsMap[s.key] = s.value === 'true' || s.value === true
+                    } else if (config?.type === 'number') {
+                        settingsMap[s.key] = parseInt(s.value) || 0
+                    } else {
+                        settingsMap[s.key] = s.value
+                    }
                 })
             } else if (data && typeof data === 'object') {
                 Object.assign(settingsMap, data)
@@ -103,7 +111,12 @@ export default function AppSettings() {
     const saveSettings = async () => {
         setSaving(true)
         try {
-            await api.put('/admin/app-settings', settings)
+            const settingsArray = Object.entries(settings).map(([key, value]) => ({
+                key,
+                value: String(value),
+                description: settingsConfig[key]?.description || ''
+            }))
+            await api.put('/admin/app-settings', { settings: settingsArray })
 
             setHasChanges(false)
             alert('Configurações salvas com sucesso!')

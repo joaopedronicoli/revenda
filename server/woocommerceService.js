@@ -36,6 +36,12 @@ async function createOrder(orderData) {
     return data;
 }
 
+async function updateOrder(orderId, orderData) {
+    const woo = await getWooClient();
+    const { data } = await woo.put(`/orders/${orderId}`, orderData);
+    return data;
+}
+
 async function updateOrderStatus(orderId, status) {
     const woo = await getWooClient();
     const { data } = await woo.put(`/orders/${orderId}`, { status });
@@ -63,4 +69,4 @@ async function listProducts(params = {}) {
     return data;
 }
 
-module.exports = { createOrder, updateOrderStatus, getOrder, addOrderNote, listProducts };
+module.exports = { createOrder, updateOrder, updateOrderStatus, getOrder, addOrderNote, listProducts };

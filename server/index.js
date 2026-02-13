@@ -257,6 +257,146 @@ async function grantAchievement(userId, slug) {
     }
 }
 
+// Criar ou atualizar pedido no WooCommerce com dados atualizados
+async function createOrUpdateWCOrder(orderId) {
+    const { rows } = await db.query(
+        `SELECT o.*, a.street, a.number AS addr_number, a.complement, a.neighborhood, a.city, a.state, a.cep
+         FROM orders o LEFT JOIN addresses a ON o.address_id = a.id
+         WHERE o.id = $1`,
+        [orderId]
+    );
+    if (rows.length === 0) throw new Error('Pedido nao encontrado');
+    const order = rows[0];
+    const details = order.details || {};
+
+    // Buscar dados do usuario
+    const { rows: userRows } = await db.query(
+        'SELECT name, email, telefone, cpf, cnpj, document_type FROM users WHERE id = $1',
+        [order.user_id]
+    );
+    const userData = userRows[0] || {};
+
+    // Buscar woo_product_id para todos os itens
+    const allItems = details.items || [];
+    for (const item of allItems) {
+        if (!item.woo_product_id && item.id) {
+            const { rows: pRows } = await db.query('SELECT woo_product_id FROM products WHERE id = $1', [item.id]);
+            if (pRows.length > 0 && pRows[0].woo_product_id) {
+                item.woo_product_id = pRows[0].woo_product_id;
+            }
+        }
+    }
+
+    const lineItems = allItems
+        .filter(item => item.woo_product_id)
+        .map(item => ({
+            product_id: item.woo_product_id,
+            quantity: item.quantity,
+            total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
+            subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
+        }));
+
+    // Resolver empresa faturadora
+    let billingCompanyName = '';
+    try {
+        if (order.billing_company_id) {
+            const { rows: bcRows } = await db.query('SELECT name FROM billing_companies WHERE id = $1', [order.billing_company_id]);
+            if (bcRows.length > 0) billingCompanyName = bcRows[0].name;
+        } else if (order.state) {
+            const resolved = await billingService.resolveForState(order.state);
+            if (resolved) billingCompanyName = resolved.billingCompanyName || '';
+        }
+    } catch (e) { /* ignora */ }
+
+    const userName = userData.name || details.user_name || 'Cliente';
+    const nameParts = userName.trim().split(' ');
+    const firstName = nameParts[0] || 'Cliente';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const userPhone = userData.telefone || details.user_whatsapp || '';
+    const userCpf = userData.cpf || details.user_cpf || '';
+    const userEmail = userData.email || details.user_email || '';
+
+    const paymentMethodLabel = order.payment_method === 'pix' ? 'PIX' : order.payment_method === 'credit_card' ? 'Cartao de Credito' : order.payment_method || 'Nao informado';
+    const gatewayLabel = order.gateway_type ? ` (${order.gateway_type})` : '';
+
+    const orderNotes = [
+        'Pedido realizado pela Central de Revendas.',
+        `Metodo de pagamento: ${paymentMethodLabel}${gatewayLabel}.`,
+        billingCompanyName ? `Empresa faturadora: ${billingCompanyName}.` : '',
+        details.coupon_code ? `Cupom: ${details.coupon_code} (desconto: R$ ${parseFloat(details.coupon_discount || 0).toFixed(2)}).` : ''
+    ].filter(Boolean).join('\n');
+
+    const wcOrderData = {
+        status: 'processing',
+        billing: {
+            first_name: firstName,
+            last_name: lastName,
+            email: userEmail,
+            phone: userPhone,
+            address_1: `${order.street || ''}${order.addr_number ? ', ' + order.addr_number : ''}`,
+            address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
+            city: order.city || '',
+            state: order.state || '',
+            postcode: order.cep || '',
+            country: 'BR'
+        },
+        shipping: {
+            first_name: firstName,
+            last_name: lastName,
+            address_1: `${order.street || ''}${order.addr_number ? ', ' + order.addr_number : ''}`,
+            address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
+            city: order.city || '',
+            state: order.state || '',
+            postcode: order.cep || '',
+            country: 'BR'
+        },
+        line_items: lineItems,
+        customer_note: orderNotes,
+        shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
+        meta_data: [
+            { key: '_revenda_app_order_id', value: String(order.id) },
+            { key: '_payment_method_title', value: paymentMethodLabel },
+            { key: '_billing_number', value: order.addr_number || '' },
+            { key: '_billing_neighborhood', value: order.neighborhood || '' },
+            { key: '_billing_cpf', value: userCpf },
+            { key: '_billing_cnpj', value: userData.cnpj || '' },
+            { key: '_billing_cellphone', value: userPhone },
+            { key: '_billing_persontype', value: userData.document_type === 'cnpj' ? '2' : '1' },
+            { key: 'pe_channel', value: 'revenda' },
+            { key: 'pe_landing', value: 'central-revendas' },
+            { key: 'pe_referrer', value: 'central-revendas' },
+            { key: '_utm_source', value: 'revenda' },
+            { key: '_utm_medium', value: 'app' },
+            { key: '_utm_campaign', value: 'central-revendas' },
+            { key: '_billing_company', value: billingCompanyName }
+        ]
+    };
+
+    if (lineItems.length === 0) {
+        console.warn(`[WC Order] Order ${orderId}: nenhum item com woo_product_id, nao criando no WC`);
+        return null;
+    }
+
+    // Se ja tem WC order, atualizar. Senao, criar novo.
+    if (order.woocommerce_order_id) {
+        const wcOrder = await woocommerceService.updateOrder(order.woocommerce_order_id, wcOrderData);
+        console.log(`[WC Order] Updated #${wcOrder.number || order.woocommerce_order_id} for local order ${orderId} (line_items: ${lineItems.length})`);
+        return wcOrder;
+    } else {
+        const wcOrder = await woocommerceService.createOrder(wcOrderData);
+        // Salvar referencia WC no pedido local
+        await db.query(
+            `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
+             tracking_url = $4, updated_at = NOW() WHERE id = $5`,
+            [String(wcOrder.number), String(wcOrder.id), String(wcOrder.number),
+             `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
+             orderId]
+        );
+        console.log(`[WC Order] Created #${wcOrder.number} for local order ${orderId} (line_items: ${lineItems.length})`);
+        return wcOrder;
+    }
+}
+
 // Creditar comissao de indicacao
 // Logica pos-pagamento reutilizavel (chamada por PUT /orders, POST /orders/:id/sync e webhook iPag)
 async function processPostPaymentLogic(orderId, userId, orderTotal, orderDetails) {
@@ -341,6 +481,13 @@ async function processPostPaymentLogic(orderId, userId, orderTotal, orderDetails
 
         // Disparar webhook order_paid
         dispatchWebhooks('order_paid', { order_id: orderId, user_id: userId, total: orderTotal, details: orderDetails }).catch(() => {});
+
+        // Criar/atualizar pedido no WooCommerce com dados finais (apos pagamento confirmado)
+        try {
+            await createOrUpdateWCOrder(orderId);
+        } catch (wcErr) {
+            console.error(`[WC Order] Erro ao criar/atualizar WC order para pedido ${orderId}:`, wcErr.message);
+        }
     } catch (e) {
         console.error('Erro em processPostPaymentLogic:', e);
     }
@@ -1641,127 +1788,7 @@ app.post('/orders', authenticateToken, async (req, res) => {
         // Disparar webhook order_created
         dispatchWebhooks('order_created', { order_id: newOrder.id, order_number: newOrder.order_number, total: newOrder.total, user_id: newOrder.user_id, details: newOrder.details }).catch(() => {});
 
-        // Auto-criar pedido no WooCommerce
-        try {
-            // Buscar endereco para enviar ao WC
-            let addressData = {};
-            if (address_id) {
-                const { rows: addrRows } = await db.query('SELECT * FROM addresses WHERE id = $1', [address_id]);
-                if (addrRows.length > 0) addressData = addrRows[0];
-            }
-
-            // Buscar woo_product_id da tabela products para itens que nao tiverem
-            const allItems = enrichedDetails.items || [];
-            for (const item of allItems) {
-                if (!item.woo_product_id && item.id) {
-                    const { rows: pRows } = await db.query('SELECT woo_product_id FROM products WHERE id = $1', [item.id]);
-                    if (pRows.length > 0 && pRows[0].woo_product_id) {
-                        item.woo_product_id = pRows[0].woo_product_id;
-                    }
-                }
-            }
-
-            const lineItems = allItems
-                .filter(item => item.woo_product_id)
-                .map(item => ({
-                    product_id: item.woo_product_id,
-                    quantity: item.quantity,
-                    total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
-                    subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
-                }));
-
-            console.log(`[WC Order] Order ${newOrder.id}: ${allItems.length} items, ${lineItems.length} with woo_product_id`);
-
-            // Resolver empresa faturadora pelo estado do endereco
-            let billingCompanyName = '';
-            try {
-                if (addressData.state) {
-                    const resolved = await billingService.resolveForState(addressData.state);
-                    if (resolved) billingCompanyName = resolved.billingCompanyName || '';
-                }
-            } catch (e) { /* ignora */ }
-
-            const userName = userStatus.name || enrichedDetails.user_name || 'Cliente';
-            const nameParts = userName.trim().split(' ');
-            const firstName = nameParts[0] || 'Cliente';
-            const lastName = nameParts.slice(1).join(' ') || '';
-            const userPhone = userStatus.telefone || enrichedDetails.user_whatsapp || '';
-            const userCpf = userStatus.cpf || enrichedDetails.user_cpf || '';
-            const userEmail = userStatus.email || enrichedDetails.user_email || '';
-
-            // Montar nota do pedido
-            const orderNotes = [
-                'Pedido realizado pela Central de Revendas.',
-                `Metodo de pagamento: ${payment_method === 'pix' ? 'PIX' : payment_method === 'credit_card' ? 'Cartao de Credito' : payment_method || 'Nao informado'}.`,
-                billingCompanyName ? `Empresa faturadora: ${billingCompanyName}.` : ''
-            ].filter(Boolean).join('\n');
-
-            // Sempre criar pedido no WC, usando fee_lines como fallback se nao houver line_items
-            const wcOrderData = {
-                status: 'pending',
-                billing: {
-                    first_name: firstName,
-                    last_name: lastName,
-                    email: userEmail,
-                    phone: userPhone,
-                    address_1: `${addressData.street || ''}${addressData.number ? ', ' + addressData.number : ''}`,
-                    address_2: [addressData.complement, addressData.neighborhood].filter(Boolean).join(' - '),
-                    city: addressData.city || '',
-                    state: addressData.state || '',
-                    postcode: addressData.cep || '',
-                    country: 'BR'
-                },
-                shipping: {
-                    first_name: firstName,
-                    last_name: lastName,
-                    address_1: `${addressData.street || ''}${addressData.number ? ', ' + addressData.number : ''}`,
-                    address_2: [addressData.complement, addressData.neighborhood].filter(Boolean).join(' - '),
-                    city: addressData.city || '',
-                    state: addressData.state || '',
-                    postcode: addressData.cep || '',
-                    country: 'BR'
-                },
-                line_items: lineItems.length > 0 ? lineItems : [],
-                fee_lines: lineItems.length === 0 ? [{ name: 'Pedido Revenda App', total: finalTotal.toString() }] : [],
-                customer_note: orderNotes,
-                shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
-                meta_data: [
-                    { key: '_revenda_app_order_id', value: String(newOrder.id) },
-                    { key: '_payment_method_title', value: payment_method || 'Nao informado' },
-                    { key: '_billing_number', value: addressData.number || '' },
-                    { key: '_billing_neighborhood', value: addressData.neighborhood || '' },
-                    { key: '_billing_cpf', value: userCpf },
-                    { key: '_billing_cnpj', value: userStatus.cnpj || '' },
-                    { key: '_billing_cellphone', value: userPhone },
-                    { key: '_billing_persontype', value: userStatus.document_type === 'cnpj' ? '2' : '1' },
-                    { key: 'pe_channel', value: 'revenda' },
-                    { key: 'pe_landing', value: 'central-revendas' },
-                    { key: 'pe_referrer', value: 'central-revendas' },
-                    { key: '_utm_source', value: 'revenda' },
-                    { key: '_utm_medium', value: 'app' },
-                    { key: '_utm_campaign', value: 'central-revendas' },
-                    { key: '_billing_company', value: billingCompanyName }
-                ]
-            };
-
-            const wcOrder = await woocommerceService.createOrder(wcOrderData);
-
-            // Atualizar pedido local com numero do WC
-            const { rows: updatedRows } = await db.query(
-                `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
-                 tracking_url = $4, updated_at = NOW() WHERE id = $5 RETURNING *`,
-                [String(wcOrder.number), String(wcOrder.id), String(wcOrder.number),
-                 `https://patriciaelias.com.br/rastreio-de-pedido/?pedido=${wcOrder.number}`,
-                 newOrder.id]
-            );
-
-            console.log(`WC order created: #${wcOrder.number} for local order ${newOrder.id} (line_items: ${lineItems.length}, fee_lines: ${lineItems.length === 0 ? 1 : 0})`);
-            return res.status(201).json(updatedRows[0]);
-        } catch (wcErr) {
-            console.error('Erro ao criar pedido no WooCommerce (nao bloqueia):', wcErr.message);
-            // Nao bloqueia - pedido local ja foi criado
-        }
-
+        // WC order sera criado somente apos pagamento confirmado (via createOrUpdateWCOrder)
         res.status(201).json(newOrder);
     } catch (err) {
         console.error(err);
@@ -1813,23 +1840,12 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
 
         if (rows.length === 0) return res.status(404).json({ message: 'Pedido nao encontrado' });
 
-        // Se status mudou para paid/completed, processar logica pos-pagamento
+        // Se status mudou para paid/completed, processar logica pos-pagamento + criar WC order
         if (status && ['paid', 'completed', 'processing'].includes(status)) {
             const order = rows[0];
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-            // Sincronizar status no WooCommerce automaticamente
-            if (order.woocommerce_order_id) {
-                try {
-                    const wcStatusMap = { paid: 'processing', completed: 'completed', processing: 'processing' };
-                    const wcStatus = wcStatusMap[status] || 'processing';
-                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, wcStatus);
-                    console.log(`WC status synced to ${wcStatus} for order ${order.id}`);
-                } catch (wcErr) {
-                    console.error('Erro ao sincronizar status WC:', wcErr.message);
-                }
-            }
+            // WC order ja e criado/atualizado dentro de processPostPaymentLogic
         }
 
         res.json(rows[0]);
@@ -1907,15 +1923,7 @@ app.post('/orders/:id/sync', authenticateToken, async (req, res) => {
 
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-            // Sincronizar WC
-            if (order.woocommerce_order_id) {
-                try {
-                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing');
-                } catch (wcErr) {
-                    console.error('Erro ao sincronizar WC no sync:', wcErr.message);
-                }
-            }
+            // WC order ja e criado/atualizado dentro de processPostPaymentLogic
 
             const { rows: updated } = await db.query('SELECT * FROM orders WHERE id = $1', [order.id]);
             return res.json({ synced: true, paid: true, order: updated[0] });
@@ -4330,16 +4338,7 @@ app.post('/webhooks/ipag', async (req, res) => {
 
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-            // Sincronizar WC
-            if (order.woocommerce_order_id) {
-                try {
-                    await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing');
-                    console.log(`iPag Webhook: WC order ${order.woocommerce_order_id} status -> processing`);
-                } catch (wcErr) {
-                    console.error('Erro ao sincronizar WC via webhook:', wcErr.message);
-                }
-            }
+            // WC order ja e criado/atualizado dentro de processPostPaymentLogic
         }
 
         // Detectar pagamento recusado/falho
@@ -4452,10 +4451,6 @@ app.post('/webhooks/gateway/ipag', async (req, res) => {
             await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-            if (order.woocommerce_order_id) {
-                try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
-            }
         }
 
         // Detectar pagamento recusado/falho
@@ -4515,10 +4510,6 @@ app.post('/webhooks/gateway/mercadopago', async (req, res) => {
                     await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
                     const orderTotal = parseFloat(order.total) || 0;
                     await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-                    if (order.woocommerce_order_id) {
-                        try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
-                    }
                 }
             }
         }
@@ -4568,10 +4559,6 @@ app.post('/webhooks/gateway/stripe', async (req, res) => {
             await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
-
-            if (order.woocommerce_order_id) {
-                try { await woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'processing'); } catch (e) {}
-            }
         }
 
         res.sendStatus(200);

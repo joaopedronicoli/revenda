@@ -20,17 +20,26 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
     const [errors, setErrors] = useState({})
     const [mpReady, setMpReady] = useState(false)
     const [stripeReady, setStripeReady] = useState(false)
+    const [mpPaymentMethodId, setMpPaymentMethodId] = useState(null)
     const stripeElementsRef = useRef(null)
     const stripeRef = useRef(null)
     const cardElementRef = useRef(null)
+    const mpRef = useRef(null)
 
     // Carregar SDK do Mercado Pago dinamicamente
     useEffect(() => {
         if (gatewayType !== 'mercadopago' || !publicKey) return
 
+        const initMp = () => {
+            if (window.MercadoPago) {
+                mpRef.current = new window.MercadoPago(publicKey)
+                setMpReady(true)
+            }
+        }
+
         const existingScript = document.getElementById('mp-sdk')
         if (existingScript) {
-            setMpReady(true)
+            initMp()
             return
         }
 
@@ -38,9 +47,24 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
         script.id = 'mp-sdk'
         script.src = 'https://sdk.mercadopago.com/js/v2'
         script.async = true
-        script.onload = () => setMpReady(true)
+        script.onload = () => initMp()
         document.head.appendChild(script)
     }, [gatewayType, publicKey])
+
+    // Buscar payment_method_id pelo BIN quando o usuario digita o numero do cartao
+    useEffect(() => {
+        if (gatewayType !== 'mercadopago' || !mpRef.current) return
+        const bin = formData.number.replace(/\s/g, '').substring(0, 6)
+        if (bin.length < 6) {
+            setMpPaymentMethodId(null)
+            return
+        }
+        mpRef.current.getPaymentMethods({ bin }).then(({ results }) => {
+            if (results && results.length > 0) {
+                setMpPaymentMethodId(results[0].id)
+            }
+        }).catch(() => {})
+    }, [gatewayType, formData.number])
 
     // Carregar Stripe.js dinamicamente
     useEffect(() => {
@@ -102,8 +126,9 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
     const getCardBrand = (number) => {
         const cleaned = number.replace(/\s/g, '')
         if (cleaned.startsWith('4')) return 'visa'
-        if (cleaned.startsWith('5')) return 'mastercard'
-        if (cleaned.startsWith('6')) return 'elo'
+        if (/^5[1-5]/.test(cleaned)) return 'master'
+        if (/^(636368|438935|504175|451416|636297|5067|4576|4011|506699)/.test(cleaned)) return 'elo'
+        if (cleaned.startsWith('34') || cleaned.startsWith('37')) return 'amex'
         return null
     }
 
@@ -143,30 +168,40 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
         const brand = getCardBrand(formData.number)
 
         // === MERCADO PAGO: tokenizar client-side ===
-        if (gatewayType === 'mercadopago' && publicKey && mpReady) {
+        if (gatewayType === 'mercadopago' && publicKey && mpReady && mpRef.current) {
             try {
-                const mp = new window.MercadoPago(publicKey)
                 const [expiryMonth, expiryYear] = formData.expiry.split('/')
-                const tokenResult = await mp.createCardToken({
+                const cpf = (customer?.cpf || '').replace(/\D/g, '')
+
+                if (!cpf) {
+                    setErrors({ number: 'CPF do cliente necessario para pagamento via Mercado Pago.' })
+                    return
+                }
+
+                const tokenResult = await mpRef.current.createCardToken({
                     cardNumber: formData.number.replace(/\s/g, ''),
                     cardholderName: formData.holder,
                     cardExpirationMonth: expiryMonth.trim(),
                     cardExpirationYear: '20' + expiryYear.trim(),
                     securityCode: formData.cvv,
                     identificationType: 'CPF',
-                    identificationNumber: (customer?.cpf || '').replace(/\D/g, '')
+                    identificationNumber: cpf
                 })
+
+                // Usar payment_method_id identificado pelo SDK do MP (via BIN lookup)
+                const resolvedMethodId = mpPaymentMethodId || brand || 'visa'
 
                 onSubmit({
                     ...formData,
                     brand,
                     card_token: tokenResult.id,
-                    payment_method_id: brand || 'visa'
+                    payment_method_id: resolvedMethodId
                 })
                 return
             } catch (err) {
                 console.error('MP tokenization error:', err)
-                setErrors({ number: 'Erro ao processar cartao. Verifique os dados.' })
+                const mpErrorMsg = err?.message || err?.cause?.[0]?.description || 'Erro ao processar cartao. Verifique os dados.'
+                setErrors({ number: mpErrorMsg })
                 return
             }
         }

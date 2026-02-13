@@ -5,6 +5,14 @@ const MP_API_URL = 'https://api.mercadopago.com';
 async function processCardPayment({ amount, orderId, cardData, customer, installments = 1, credentials }) {
     const accessToken = credentials.access_token;
 
+    if (!accessToken) {
+        throw new Error('Mercado Pago: access_token nao configurado. Reconecte via OAuth.');
+    }
+
+    if (!cardData.card_token) {
+        throw new Error('Mercado Pago: card_token nao recebido. A tokenizacao client-side falhou.');
+    }
+
     try {
         const payload = {
             transaction_amount: amount / 100,
@@ -24,6 +32,8 @@ async function processCardPayment({ amount, orderId, cardData, customer, install
             external_reference: orderId.toString(),
             notification_url: `${process.env.API_URL || 'https://revenda.pelg.com.br'}/webhooks/gateway/mercadopago`
         };
+
+        console.log(`[MP Payment] Order ${orderId}: token=${cardData.card_token?.substring(0, 12)}..., method=${payload.payment_method_id}, amount=${payload.transaction_amount}, cpf=${payload.payer.identification.number ? 'present' : 'MISSING'}`);
 
         const response = await axios.post(`${MP_API_URL}/v1/payments`, payload, {
             headers: {

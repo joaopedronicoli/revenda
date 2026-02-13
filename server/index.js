@@ -1650,7 +1650,18 @@ app.post('/orders', authenticateToken, async (req, res) => {
                 if (addrRows.length > 0) addressData = addrRows[0];
             }
 
-            const lineItems = (enrichedDetails.items || [])
+            // Buscar woo_product_id da tabela products para itens que nao tiverem
+            const allItems = enrichedDetails.items || [];
+            for (const item of allItems) {
+                if (!item.woo_product_id && item.id) {
+                    const { rows: pRows } = await db.query('SELECT woo_product_id FROM products WHERE id = $1', [item.id]);
+                    if (pRows.length > 0 && pRows[0].woo_product_id) {
+                        item.woo_product_id = pRows[0].woo_product_id;
+                    }
+                }
+            }
+
+            const lineItems = allItems
                 .filter(item => item.woo_product_id)
                 .map(item => ({
                     product_id: item.woo_product_id,
@@ -1658,6 +1669,8 @@ app.post('/orders', authenticateToken, async (req, res) => {
                     total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
                     subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
                 }));
+
+            console.log(`[WC Order] Order ${newOrder.id}: ${allItems.length} items, ${lineItems.length} with woo_product_id`);
 
             // Resolver empresa faturadora pelo estado do endereco
             let billingCompanyName = '';
@@ -1991,6 +2004,7 @@ app.post('/payments/process', authenticateToken, async (req, res) => {
             if (!gwService) throw new Error(`Gateway ${gateway.gateway_type} nao suportado`);
 
             usedGateway = gateway;
+            console.log(`[Payment] Order ${orderId}: gateway=${gateway.gateway_type} (id=${gateway.id}), method=${paymentMethod}, billingCompanyId=${usedBillingCompanyId}`);
 
             if (paymentMethod === 'pix') {
                 result = await gwService.generatePix({ amount, orderId, customer, credentials: gateway.credentials });
@@ -1999,7 +2013,7 @@ app.post('/payments/process', authenticateToken, async (req, res) => {
             }
         } else {
             // Fallback: iPag via .env
-            console.log('Usando fallback iPag (.env) para pagamento');
+            console.log(`[Payment] Order ${orderId}: FALLBACK iPag (.env), billingCompanyId=${billingCompanyId}, method=${paymentMethod}`);
             if (paymentMethod === 'pix') {
                 result = await ipagService.generatePix({ amount, orderId, customer });
             } else {
@@ -3043,7 +3057,18 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
         );
         const userData = userRows2[0] || {};
 
-        const lineItems = (details.items || [])
+        // Buscar woo_product_id da tabela products para itens que nao tiverem
+        const allItems2 = details.items || [];
+        for (const item of allItems2) {
+            if (!item.woo_product_id && item.id) {
+                const { rows: pRows } = await db.query('SELECT woo_product_id FROM products WHERE id = $1', [item.id]);
+                if (pRows.length > 0 && pRows[0].woo_product_id) {
+                    item.woo_product_id = pRows[0].woo_product_id;
+                }
+            }
+        }
+
+        const lineItems = allItems2
             .filter(item => item.woo_product_id)
             .map(item => ({
                 product_id: item.woo_product_id,

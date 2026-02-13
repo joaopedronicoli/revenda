@@ -775,6 +775,33 @@ export default function Connections() {
                                     </div>
                                 )}
 
+                                {/* Bling Redirect URI Info */}
+                                {type === 'bling' && isConfigured && editingType !== type && (
+                                    <div className="mt-3 bg-orange-50 border border-orange-200 rounded-lg p-4">
+                                        <p className="text-xs font-semibold text-orange-800 mb-2">URL de Redirecionamento (configurar no aplicativo Bling)</p>
+                                        <div>
+                                            <span className="text-xs text-orange-600 font-medium">Redirect URI:</span>
+                                            <div className="flex items-center gap-2 mt-0.5">
+                                                <code className="text-xs bg-white border border-orange-200 rounded px-2 py-1 text-orange-900 flex-1 break-all">
+                                                    {`${window.location.origin}/admin/integrations/bling/callback`}
+                                                </code>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(`${window.location.origin}/admin/integrations/bling/callback`)
+                                                        flashSuccess('Redirect URI copiada!')
+                                                    }}
+                                                    className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs hover:bg-orange-200 shrink-0"
+                                                >
+                                                    Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-orange-500 mt-2">
+                                            Configure esta URL no painel do Bling em: Aplicativos &gt; Meus Aplicativos &gt; Editar &gt; URL de Redirecionamento
+                                        </p>
+                                    </div>
+                                )}
+
                                 {/* WooCommerce Webhook URL Info */}
                                 {type === 'woocommerce' && isConfigured && isActive && editingType !== type && (
                                     <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4">

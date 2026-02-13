@@ -333,8 +333,10 @@ async function createOrUpdateWCOrder(orderId) {
             last_name: lastName,
             email: userEmail,
             phone: userPhone,
-            address_1: `${order.street || ''}${order.addr_number ? ', ' + order.addr_number : ''}`,
-            address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
+            address_1: order.street || '',
+            address_2: order.complement || '',
+            neighborhood: order.neighborhood || '',
+            number: order.addr_number || '',
             city: order.city || '',
             state: order.state || '',
             postcode: order.cep || '',
@@ -343,8 +345,10 @@ async function createOrUpdateWCOrder(orderId) {
         shipping: {
             first_name: firstName,
             last_name: lastName,
-            address_1: `${order.street || ''}${order.addr_number ? ', ' + order.addr_number : ''}`,
-            address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
+            address_1: order.street || '',
+            address_2: order.complement || '',
+            neighborhood: order.neighborhood || '',
+            number: order.addr_number || '',
             city: order.city || '',
             state: order.state || '',
             postcode: order.cep || '',
@@ -368,7 +372,9 @@ async function createOrUpdateWCOrder(orderId) {
             { key: '_utm_source', value: 'revenda' },
             { key: '_utm_medium', value: 'app' },
             { key: '_utm_campaign', value: 'central-revendas' },
-            { key: '_billing_company', value: billingCompanyName }
+            { key: '_billing_company', value: billingCompanyName },
+            { key: '_shipping_number', value: order.addr_number || '' },
+            { key: '_shipping_neighborhood', value: order.neighborhood || '' }
         ]
     };
 

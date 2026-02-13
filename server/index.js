@@ -2634,6 +2634,74 @@ app.put('/admin/users/:id/level', authenticateToken, requireAdmin, async (req, r
     }
 });
 
+// Admin: Vincular afiliado (referrer) a um usuario
+app.put('/admin/users/:id/referrer', authenticateToken, requireAdmin, async (req, res) => {
+    const { referral_code } = req.body;
+    const userId = parseInt(req.params.id);
+
+    if (!referral_code || !referral_code.trim()) {
+        return res.status(400).json({ message: 'Codigo de afiliado e obrigatorio' });
+    }
+
+    try {
+        // Buscar o referrer pelo codigo
+        const { rows: referrerRows } = await db.query(
+            'SELECT id, name, referral_code FROM users WHERE referral_code = $1',
+            [referral_code.trim().toUpperCase()]
+        );
+
+        if (referrerRows.length === 0) {
+            return res.status(404).json({ message: 'Codigo de afiliado nao encontrado' });
+        }
+
+        const referrer = referrerRows[0];
+
+        // Nao pode vincular a si mesmo
+        if (referrer.id === userId) {
+            return res.status(400).json({ message: 'Usuario nao pode ser indicado por si mesmo' });
+        }
+
+        // Verificar se o usuario ja tem um referrer
+        const { rows: userRows } = await db.query('SELECT referred_by FROM users WHERE id = $1', [userId]);
+        if (userRows.length === 0) {
+            return res.status(404).json({ message: 'Usuario nao encontrado' });
+        }
+
+        // Atualizar referred_by
+        await db.query(
+            'UPDATE users SET referred_by = $1, updated_at = NOW() WHERE id = $2',
+            [referrer.id, userId]
+        );
+
+        // Criar ou atualizar entrada na tabela referrals
+        const { rows: existingRef } = await db.query(
+            'SELECT id FROM referrals WHERE referred_id = $1',
+            [userId]
+        );
+
+        if (existingRef.length > 0) {
+            await db.query(
+                'UPDATE referrals SET referrer_id = $1, status = $2 WHERE referred_id = $3',
+                [referrer.id, 'active', userId]
+            );
+        } else {
+            await db.query(
+                'INSERT INTO referrals (referrer_id, referred_id, status, created_at) VALUES ($1, $2, $3, NOW())',
+                [referrer.id, userId, 'active']
+            );
+        }
+
+        res.json({
+            message: 'Afiliado vinculado com sucesso',
+            referrer_code: referrer.referral_code,
+            referrer_name: referrer.name
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Erro ao vincular afiliado' });
+    }
+});
+
 // Admin: Historico de nivel
 app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (req, res) => {
     try {

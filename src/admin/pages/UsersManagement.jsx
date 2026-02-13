@@ -41,6 +41,9 @@ export default function UsersManagement() {
     const [newUser, setNewUser] = useState({ name: '', email: '', telefone: '', role: 'client', approval_status: 'approved' })
     const [creating, setCreating] = useState(false)
     const [createError, setCreateError] = useState('')
+    const [referralInput, setReferralInput] = useState('')
+    const [savingReferral, setSavingReferral] = useState(false)
+    const [referralError, setReferralError] = useState('')
 
     useEffect(() => {
         loadUsers()
@@ -123,6 +126,28 @@ export default function UsersManagement() {
             alert('Erro ao atualizar nivel')
         } finally {
             setUpdating(false)
+        }
+    }
+
+    const handleSetReferrer = async () => {
+        if (!referralInput.trim()) return
+        setSavingReferral(true)
+        setReferralError('')
+        try {
+            const { data } = await api.put(`/admin/users/${selectedUser.id}/referrer`, {
+                referral_code: referralInput.trim()
+            })
+            setSelectedUser(prev => ({
+                ...prev,
+                referrer_code: data.referrer_code,
+                referrer_name: data.referrer_name
+            }))
+            setReferralInput('')
+            loadUsers()
+        } catch (err) {
+            setReferralError(err.response?.data?.message || 'Erro ao vincular afiliado')
+        } finally {
+            setSavingReferral(false)
         }
     }
 
@@ -322,7 +347,7 @@ export default function UsersManagement() {
                                             </td>
                                             <td className="px-6 py-4">
                                                 <button
-                                                    onClick={() => { setSelectedUser(user); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); setPendingLevel(null); }}
+                                                    onClick={() => { setSelectedUser(user); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); setPendingLevel(null); setReferralInput(''); setReferralError(''); }}
                                                     className="text-sm font-medium text-primary hover:text-primary-dark"
                                                 >
                                                     Gerenciar
@@ -373,16 +398,37 @@ export default function UsersManagement() {
                                     <p><span className="font-medium">Acumulado:</span> R$ {parseFloat(selectedUser.total_accumulated || 0).toFixed(2)}</p>
                                     <p><span className="font-medium">Saldo Comissao:</span> R$ {parseFloat(selectedUser.commission_balance || 0).toFixed(2)}</p>
                                     <p><span className="font-medium">Pontos:</span> {selectedUser.points || 0}</p>
-                                    <p>
+                                    <div>
                                         <span className="font-medium">Indicado por:</span>{' '}
-                                        {selectedUser.referrer_code
-                                            ? <span className="text-primary font-mono">{selectedUser.referrer_code}</span>
-                                            : <span className="text-slate-400">Nenhum</span>
-                                        }
-                                        {selectedUser.referrer_name && (
-                                            <span className="text-slate-500 text-sm ml-1">({selectedUser.referrer_name})</span>
+                                        {selectedUser.referrer_code ? (
+                                            <>
+                                                <span className="text-primary font-mono">{selectedUser.referrer_code}</span>
+                                                {selectedUser.referrer_name && (
+                                                    <span className="text-slate-500 text-sm ml-1">({selectedUser.referrer_name})</span>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <div className="mt-1 flex items-center gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={referralInput}
+                                                    onChange={e => setReferralInput(e.target.value.toUpperCase())}
+                                                    placeholder="Codigo do afiliado"
+                                                    className="px-2 py-1 border border-slate-300 rounded text-sm w-40 font-mono"
+                                                />
+                                                <button
+                                                    onClick={handleSetReferrer}
+                                                    disabled={savingReferral || !referralInput.trim()}
+                                                    className="px-3 py-1 bg-primary text-white text-sm rounded hover:bg-primary-dark disabled:opacity-50"
+                                                >
+                                                    {savingReferral ? 'Salvando...' : 'Vincular'}
+                                                </button>
+                                            </div>
                                         )}
-                                    </p>
+                                        {referralError && (
+                                            <p className="text-red-500 text-xs mt-1">{referralError}</p>
+                                        )}
+                                    </div>
                                     {selectedUser.rejection_reason && (
                                         <p className="text-red-600"><span className="font-medium">Motivo rejeicao:</span> {selectedUser.rejection_reason}</p>
                                     )}

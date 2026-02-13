@@ -14,8 +14,8 @@ import Confirmation from './pages/Confirmation'
 import Referrals from './pages/Referrals'
 import Rankings from './pages/Rankings'
 import ResellerDashboard from './pages/ResellerDashboard'
-import AffiliateRegister from './pages/AffiliateRegister'
-import AffiliateDashboard from './pages/AffiliateDashboard'
+import IndicacaoRegister from './pages/IndicacaoRegister'
+import IndicacaoDashboard from './pages/IndicacaoDashboard'
 import Layout from './components/Layout'
 import CompleteProfile from './pages/CompleteProfile'
 import AdminApp from './admin/AdminApp'
@@ -137,18 +137,18 @@ export default function App() {
               </ProtectedRoute>
             } />
 
-            <Route path="/affiliate/register" element={
+            <Route path="/indicacao/register" element={
               <ProtectedRoute>
                 <Layout>
-                  <AffiliateRegister />
+                  <IndicacaoRegister />
                 </Layout>
               </ProtectedRoute>
             } />
 
-            <Route path="/affiliate/dashboard" element={
+            <Route path="/indicacao/dashboard" element={
               <ProtectedRoute>
                 <Layout>
-                  <AffiliateDashboard />
+                  <IndicacaoDashboard />
                 </Layout>
               </ProtectedRoute>
             } />

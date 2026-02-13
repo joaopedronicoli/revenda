@@ -6,7 +6,7 @@ const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-export default function AffiliateReports() {
+export default function IndicacaoReports() {
     const [report, setReport] = useState({ summary: {}, affiliates: [] })
     const [loading, setLoading] = useState(true)
     const [startDate, setStartDate] = useState('')
@@ -22,7 +22,7 @@ export default function AffiliateReports() {
 
     const loadAffiliatesList = async () => {
         try {
-            const { data } = await api.get('/admin/affiliates')
+            const { data } = await api.get('/admin/indicadores')
             setAffiliatesList(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading affiliates list:', err)
@@ -37,7 +37,7 @@ export default function AffiliateReports() {
             if (endDate) params.append('endDate', endDate)
             if (affiliateId) params.append('affiliateId', affiliateId)
 
-            const { data } = await api.get(`/admin/affiliate-reports?${params.toString()}`)
+            const { data } = await api.get(`/admin/indicacao-reports?${params.toString()}`)
             setReport(data || { summary: {}, affiliates: [] })
         } catch (err) {
             console.error('Error loading report:', err)
@@ -54,14 +54,14 @@ export default function AffiliateReports() {
             if (endDate) params.append('endDate', endDate)
             if (affiliateId) params.append('affiliateId', affiliateId)
 
-            const response = await api.get(`/admin/affiliate-reports/export?${params.toString()}`, {
+            const response = await api.get(`/admin/indicacao-reports/export?${params.toString()}`, {
                 responseType: 'blob'
             })
 
             const url = window.URL.createObjectURL(new Blob([response.data]))
             const link = document.createElement('a')
             link.href = url
-            link.setAttribute('download', 'relatorio-afiliados.csv')
+            link.setAttribute('download', 'relatorio-indicadores.csv')
             document.body.appendChild(link)
             link.click()
             link.remove()
@@ -90,9 +90,9 @@ export default function AffiliateReports() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                         <BarChart3 className="w-6 h-6" />
-                        Relatorios de Afiliados
+                        Relatorios de Indicadores
                     </h1>
-                    <p className="text-slate-500">Analise o desempenho dos afiliados</p>
+                    <p className="text-slate-500">Analise o desempenho dos indicadores</p>
                 </div>
                 <button
                     onClick={exportCSV}
@@ -136,13 +136,13 @@ export default function AffiliateReports() {
                         </div>
                     </div>
                     <div>
-                        <label className="block text-xs text-slate-500 mb-1">Afiliado</label>
+                        <label className="block text-xs text-slate-500 mb-1">Indicador</label>
                         <select
                             value={affiliateId}
                             onChange={e => setAffiliateId(e.target.value)}
                             className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary min-w-[200px]"
                         >
-                            <option value="">Todos os afiliados</option>
+                            <option value="">Todos os indicadores</option>
                             {affiliatesList.map(a => (
                                 <option key={a.id} value={a.id}>{a.name || a.email}</option>
                             ))}

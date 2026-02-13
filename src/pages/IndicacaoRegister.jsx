@@ -57,7 +57,7 @@ const tracks = [
     }
 ]
 
-export default function AffiliateRegister() {
+export default function IndicacaoRegister() {
     const navigate = useNavigate()
     const [selectedType, setSelectedType] = useState(null)
     const [loading, setLoading] = useState(false)
@@ -73,10 +73,10 @@ export default function AffiliateRegister() {
         setError('')
 
         try {
-            await api.post('/affiliate/register', { type: selectedType })
-            navigate('/affiliate/dashboard')
+            await api.post('/indicacao/register', { type: selectedType })
+            navigate('/indicacao/dashboard')
         } catch (err) {
-            console.error('Error registering as affiliate:', err)
+            console.error('Error registering as indicador:', err)
             setError(err.response?.data?.message || 'Erro ao realizar cadastro. Tente novamente.')
         } finally {
             setLoading(false)
@@ -87,7 +87,7 @@ export default function AffiliateRegister() {
         <div className="space-y-6 max-w-4xl mx-auto">
                 {/* Header */}
                 <div className="text-center">
-                    <h1 className="text-2xl font-bold text-slate-900">Programa de Afiliados</h1>
+                    <h1 className="text-2xl font-bold text-slate-900">Programa de Indicadores</h1>
                     <p className="text-slate-500 mt-1">Escolha a modalidade ideal para voce e comece a ganhar comissoes</p>
                 </div>
 
@@ -167,7 +167,7 @@ export default function AffiliateRegister() {
                             <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                         ) : (
                             <>
-                                Cadastrar como Afiliada
+                                Cadastrar como Indicadora
                                 <ArrowRight className="w-5 h-5" />
                             </>
                         )}

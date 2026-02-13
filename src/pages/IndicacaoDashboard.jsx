@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { DollarSign, TrendingUp, Users, ShoppingBag, Copy, Share2, Check, ArrowUpRight, MousePointerClick, Wallet, Tag, Image, Download, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { DollarSign, TrendingUp, Users, ShoppingBag, Copy, Share2, Check, ArrowUpRight, MousePointerClick, Wallet, Tag, Image, Download, Clock, CheckCircle, XCircle, ExternalLink, ShoppingCart } from 'lucide-react'
 import api from '../services/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -24,7 +24,7 @@ const payoutStatusConfig = {
     rejected: { label: 'Rejeitado', color: 'bg-red-100 text-red-800', icon: XCircle }
 }
 
-export default function AffiliateDashboard() {
+export default function IndicacaoDashboard() {
     const { user } = useAuth()
     const [dashboard, setDashboard] = useState(null)
     const [loading, setLoading] = useState(true)
@@ -55,11 +55,11 @@ export default function AffiliateDashboard() {
     const loadAll = async () => {
         try {
             const [dashRes, clickRes, payoutRes, couponRes, creativesRes] = await Promise.allSettled([
-                api.get('/affiliate/dashboard'),
-                api.get('/affiliate/click-stats'),
-                api.get('/affiliate/payouts/history'),
-                api.get('/affiliate/my-coupon'),
-                api.get('/affiliate/creatives')
+                api.get('/indicacao/dashboard'),
+                api.get('/indicacao/click-stats'),
+                api.get('/indicacao/payouts/history'),
+                api.get('/indicacao/my-coupon'),
+                api.get('/indicacao/creatives')
             ])
             if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
             if (clickRes.status === 'fulfilled') setClickStats(clickRes.value.data)
@@ -67,7 +67,7 @@ export default function AffiliateDashboard() {
             if (couponRes.status === 'fulfilled') setMyCoupon(couponRes.value.data)
             if (creativesRes.status === 'fulfilled') setCreatives(Array.isArray(creativesRes.value.data) ? creativesRes.value.data : [])
         } catch (err) {
-            console.error('Error loading affiliate data:', err)
+            console.error('Error loading indicacao data:', err)
         } finally {
             setLoading(false)
         }
@@ -90,7 +90,7 @@ export default function AffiliateDashboard() {
         if (navigator.share) {
             try {
                 await navigator.share({
-                    title: 'Convite de afiliada',
+                    title: 'Convite de indicadora',
                     text: `Compre com meu link e aproveite ofertas exclusivas!`,
                     url: shareLink
                 })
@@ -116,14 +116,14 @@ export default function AffiliateDashboard() {
         }
         setPayoutLoading(true)
         try {
-            await api.post('/affiliate/payouts/request', { amount, pixKey })
+            await api.post('/indicacao/payouts/request', { amount, pixKey })
             setPayoutSuccess('Saque solicitado com sucesso!')
             setPayoutAmount('')
             setPixKey('')
             // Reload data
             const [dashRes, payoutRes] = await Promise.allSettled([
-                api.get('/affiliate/dashboard'),
-                api.get('/affiliate/payouts/history')
+                api.get('/indicacao/dashboard'),
+                api.get('/indicacao/payouts/history')
             ])
             if (dashRes.status === 'fulfilled') setDashboard(dashRes.value.data)
             if (payoutRes.status === 'fulfilled') setPayoutHistory(Array.isArray(payoutRes.value.data) ? payoutRes.value.data : [])
@@ -174,7 +174,7 @@ export default function AffiliateDashboard() {
         <div className="space-y-6">
             {/* Header */}
             <div>
-                <h1 className="text-2xl font-bold text-slate-900">Painel de Afiliada</h1>
+                <h1 className="text-2xl font-bold text-slate-900">Painel de Indicadora</h1>
                 <p className="text-slate-500">Acompanhe suas comissoes e indicacoes</p>
             </div>
 
@@ -210,7 +210,7 @@ export default function AffiliateDashboard() {
 
             {/* Referral Code & Share Link */}
             <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-900 mb-4">Seu Link de Afiliada</h2>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">Seu Link de Indicadora</h2>
 
                 <div className="flex items-center gap-3 mb-4">
                     <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
@@ -241,6 +241,32 @@ export default function AffiliateDashboard() {
                         <Share2 className="w-4 h-4" />
                         Compartilhar
                     </button>
+                </div>
+            </div>
+
+            {/* AffiliateWP — Links de Produtos */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200 shadow-sm">
+                <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                        <ShoppingCart className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div className="flex-1">
+                        <h2 className="text-lg font-semibold text-slate-900 mb-1">Links de Produtos para Consumidor</h2>
+                        <p className="text-sm text-slate-600 mb-4">
+                            Deseja gerar links de indicacao para produtos especificos do site?
+                            Acesse sua area de afiliado no site para criar links personalizados de qualquer produto
+                            e acompanhar suas comissoes de vendas para consumidor final.
+                        </p>
+                        <a
+                            href="https://patriciaelias.com.br/account/affiliate-area/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                        >
+                            <ExternalLink className="w-4 h-4" />
+                            Acessar Area de Afiliado no Site
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -344,10 +370,10 @@ export default function AffiliateDashboard() {
                 )}
             </div>
 
-            {/* Affiliate Level Progress */}
+            {/* Indicadora Level Progress */}
             <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold text-slate-900">Nivel de Afiliada</h2>
+                    <h2 className="text-lg font-semibold text-slate-900">Nivel de Indicadora</h2>
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${levelInfo.color}`}>
                         {levelInfo.label}
                     </span>

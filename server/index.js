@@ -45,7 +45,7 @@ const LEVEL_CONFIG = {
     ouro:    { discount: 0.40, name: 'Ouro', minAccumulated: 10000 }
 };
 
-const AFFILIATE_CONFIG = {
+const INDICACAO_CONFIG = {
     influencer_pro: {
         name: 'Influencer Pro',
         fee: 0,
@@ -63,7 +63,7 @@ const AFFILIATE_CONFIG = {
     }
 };
 
-const AFFILIATE_LEVELS = {
+const INDICACAO_LEVELS = {
     conhecedor: { name: 'Conhecedor', minSales: 0, bonus: 0 },
     to_gostando: { name: 'To Gostando', minSales: 10, bonus: 0 },
     associado: { name: 'Associado', minSales: 30, bonus: 0.025 }
@@ -134,11 +134,35 @@ const requireAdmin = async (req, res, next) => {
 // HELPERS
 // =============================================
 
-// Gera codigo de indicacao unico
-function generateReferralCode(name) {
-    const cleanName = (name || 'USER').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6);
-    const rand = Math.floor(1000 + Math.random() * 9000);
-    return `PE-${cleanName}${rand}`;
+// Gera codigo de indicacao unico: nome + primeira letra do sobrenome (ex: MARIAS)
+// Se ja existir, acrescenta numeros: MARIAS1, MARIAS2, etc.
+async function generateReferralCode(name) {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    const firstName = (parts[0] || 'USER').toUpperCase().replace(/[^A-Z]/g, '');
+    const lastInitial = parts.length > 1 ? parts[parts.length - 1].charAt(0).toUpperCase().replace(/[^A-Z]/g, '') : '';
+    const baseCode = firstName + lastInitial;
+
+    // Checar se baseCode ja existe
+    const { rows } = await db.query(
+        'SELECT referral_code FROM users WHERE referral_code = $1 OR referral_code ~ $2',
+        [baseCode, `^${baseCode}[0-9]*$`]
+    );
+
+    if (rows.length === 0) return baseCode;
+
+    // Encontrar o maior sufixo numerico existente
+    let maxNum = 0;
+    for (const row of rows) {
+        const suffix = row.referral_code.slice(baseCode.length);
+        if (suffix === '') {
+            maxNum = Math.max(maxNum, 0);
+        } else {
+            const num = parseInt(suffix, 10);
+            if (!isNaN(num)) maxNum = Math.max(maxNum, num);
+        }
+    }
+
+    return `${baseCode}${maxNum + 1}`;
 }
 
 // Recalcula nivel do usuario apos evento
@@ -1264,18 +1288,8 @@ app.get('/users/me/referral-code', authenticateToken, async (req, res) => {
 
         let code = rows[0].referral_code;
         if (!code) {
-            code = generateReferralCode(rows[0].name);
-            // Ensure uniqueness
-            let attempts = 0;
-            while (attempts < 5) {
-                try {
-                    await db.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
-                    break;
-                } catch (e) {
-                    code = generateReferralCode(rows[0].name);
-                    attempts++;
-                }
-            }
+            code = await generateReferralCode(rows[0].name);
+            await db.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
         }
 
         res.json({ referralCode: code });
@@ -1550,20 +1564,20 @@ app.get('/users/me/commission-history', authenticateToken, async (req, res) => {
 });
 
 // =============================================
-// AFFILIATE ROUTES
+// INDICACAO ROUTES
 // =============================================
 
-app.post('/affiliate/register', authenticateToken, async (req, res) => {
+app.post('/indicacao/register', authenticateToken, async (req, res) => {
     const { type } = req.body; // influencer_pro, renda_extra, gratuito
 
-    if (!AFFILIATE_CONFIG[type]) {
-        return res.status(400).json({ message: 'Tipo de afiliado invalido' });
+    if (!INDICACAO_CONFIG[type]) {
+        return res.status(400).json({ message: 'Tipo de indicador invalido' });
     }
 
     try {
         const { rows } = await db.query('SELECT affiliate_status FROM users WHERE id = $1', [req.user.id]);
         if (rows[0]?.affiliate_status === 'active') {
-            return res.status(400).json({ message: 'Voce ja e um afiliado ativo' });
+            return res.status(400).json({ message: 'Voce ja e um indicador ativo' });
         }
 
         await db.query(
@@ -1574,33 +1588,33 @@ app.post('/affiliate/register', authenticateToken, async (req, res) => {
         // Generate referral code if doesn't exist
         const codeResult = await db.query('SELECT referral_code, name FROM users WHERE id = $1', [req.user.id]);
         if (!codeResult.rows[0].referral_code) {
-            const code = generateReferralCode(codeResult.rows[0].name);
+            const code = await generateReferralCode(codeResult.rows[0].name);
             await db.query('UPDATE users SET referral_code = $1 WHERE id = $2', [code, req.user.id]);
         }
 
-        res.json({ message: 'Afiliado registrado com sucesso', type });
+        res.json({ message: 'Indicador registrado com sucesso', type });
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
-            return res.status(500).json({ message: 'Sistema de afiliados ainda nao configurado. Execute setup_db primeiro.' });
+            return res.status(500).json({ message: 'Sistema de indicadores ainda nao configurado. Execute setup_db primeiro.' });
         }
         console.error(err);
-        res.status(500).json({ message: 'Erro ao registrar afiliado' });
+        res.status(500).json({ message: 'Erro ao registrar indicador' });
     }
 });
 
-app.get('/affiliate/me', authenticateToken, async (req, res) => {
+app.get('/indicacao/me', authenticateToken, async (req, res) => {
     try {
         const { rows } = await db.query(
             'SELECT affiliate_type, affiliate_status, affiliate_level, affiliate_sales_count, referral_code, commission_balance FROM users WHERE id = $1',
             [req.user.id]
         );
         if (rows.length === 0 || !rows[0].affiliate_type) {
-            return res.status(404).json({ message: 'Nao e afiliado' });
+            return res.status(404).json({ message: 'Nao e indicador' });
         }
 
         const user = rows[0];
-        const config = AFFILIATE_CONFIG[user.affiliate_type] || {};
-        const levelConfig = AFFILIATE_LEVELS[user.affiliate_level] || AFFILIATE_LEVELS.conhecedor;
+        const config = INDICACAO_CONFIG[user.affiliate_type] || {};
+        const levelConfig = INDICACAO_LEVELS[user.affiliate_level] || INDICACAO_LEVELS.conhecedor;
 
         res.json({
             ...user,
@@ -1612,20 +1626,20 @@ app.get('/affiliate/me', authenticateToken, async (req, res) => {
         });
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
-            return res.status(404).json({ message: 'Nao e afiliado' });
+            return res.status(404).json({ message: 'Nao e indicador' });
         }
         console.error(err);
-        res.status(500).json({ message: 'Erro ao buscar perfil afiliado' });
+        res.status(500).json({ message: 'Erro ao buscar perfil indicador' });
     }
 });
 
-app.get('/affiliate/dashboard', authenticateToken, async (req, res) => {
+app.get('/indicacao/dashboard', authenticateToken, async (req, res) => {
     try {
         const { rows: userRows } = await db.query(
             'SELECT affiliate_type, affiliate_level, affiliate_sales_count, commission_balance, referral_code FROM users WHERE id = $1',
             [req.user.id]
         );
-        if (!userRows[0]?.affiliate_type) return res.status(404).json({ message: 'Nao e afiliado' });
+        if (!userRows[0]?.affiliate_type) return res.status(404).json({ message: 'Nao e indicador' });
 
         const [commissionsResult, referralsResult, monthResult] = await Promise.all([
             db.query("SELECT COALESCE(SUM(amount),0) as total FROM commissions WHERE user_id = $1 AND type = 'affiliate'", [req.user.id]),
@@ -1641,10 +1655,10 @@ app.get('/affiliate/dashboard', authenticateToken, async (req, res) => {
         });
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
-            return res.status(404).json({ message: 'Nao e afiliado' });
+            return res.status(404).json({ message: 'Nao e indicador' });
         }
         console.error(err);
-        res.status(500).json({ message: 'Erro ao buscar dashboard afiliado' });
+        res.status(500).json({ message: 'Erro ao buscar dashboard indicador' });
     }
 });
 
@@ -2698,7 +2712,7 @@ app.post('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
         if (finalStatus === 'approved') {
             paramCount++;
             query += `, referral_code`;
-            const code = generateReferralCode(name);
+            const code = await generateReferralCode(name);
             placeholders += `, $${paramCount}`;
             values.push(code);
         }
@@ -2750,19 +2764,8 @@ app.put('/admin/users/:id/approve', authenticateToken, requireAdmin, async (req,
                     console.warn('Erro ao enviar email de aprovacao:', e.message)
                 );
                 try {
-                    const code = generateReferralCode(rows[0].name);
-                    let attempts = 0;
-                    let saved = false;
-                    let finalCode = code;
-                    while (attempts < 5 && !saved) {
-                        try {
-                            await db.query('UPDATE users SET referral_code = $1 WHERE id = $2 AND (referral_code IS NULL OR referral_code = \'\')', [finalCode, req.params.id]);
-                            saved = true;
-                        } catch (e) {
-                            finalCode = generateReferralCode(rows[0].name);
-                            attempts++;
-                        }
-                    }
+                    const code = await generateReferralCode(rows[0].name);
+                    await db.query('UPDATE users SET referral_code = $1 WHERE id = $2 AND (referral_code IS NULL OR referral_code = \'\')', [code, req.params.id]);
                 } catch (e) {
                     console.warn('Erro ao gerar referral_code na aprovacao:', e.message);
                 }
@@ -2847,7 +2850,7 @@ app.put('/admin/users/:id/referrer', authenticateToken, requireAdmin, async (req
     const userId = parseInt(req.params.id);
 
     if (!referral_code || !referral_code.trim()) {
-        return res.status(400).json({ message: 'Codigo de afiliado e obrigatorio' });
+        return res.status(400).json({ message: 'Codigo de indicador e obrigatorio' });
     }
 
     try {
@@ -2858,7 +2861,7 @@ app.put('/admin/users/:id/referrer', authenticateToken, requireAdmin, async (req
         );
 
         if (referrerRows.length === 0) {
-            return res.status(404).json({ message: 'Codigo de afiliado nao encontrado' });
+            return res.status(404).json({ message: 'Codigo de indicador nao encontrado' });
         }
 
         const referrer = referrerRows[0];
@@ -2899,13 +2902,13 @@ app.put('/admin/users/:id/referrer', authenticateToken, requireAdmin, async (req
         }
 
         res.json({
-            message: 'Afiliado vinculado com sucesso',
+            message: 'Indicador vinculado com sucesso',
             referrer_code: referrer.referral_code,
             referrer_name: referrer.name
         });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Erro ao vincular afiliado' });
+        res.status(500).json({ message: 'Erro ao vincular indicador' });
     }
 });
 
@@ -2924,8 +2927,8 @@ app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (
     }
 });
 
-// Admin: Gestao de afiliados
-app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) => {
+// Admin: Gestao de indicadores
+app.get('/admin/indicadores', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { rows } = await db.query(
             `SELECT u.id, u.name, u.email, u.telefone, u.affiliate_type, u.affiliate_status, u.affiliate_level, u.affiliate_sales_count, u.commission_balance, u.referral_code, u.created_at,
@@ -2936,11 +2939,11 @@ app.get('/admin/affiliates', authenticateToken, requireAdmin, async (req, res) =
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) return res.json([]);
         console.error(err);
-        res.status(500).json({ message: 'Erro ao listar afiliados' });
+        res.status(500).json({ message: 'Erro ao listar indicadores' });
     }
 });
 
-app.put('/admin/affiliates/:id/status', authenticateToken, requireAdmin, async (req, res) => {
+app.put('/admin/indicadores/:id/status', authenticateToken, requireAdmin, async (req, res) => {
     const { status } = req.body;
     try {
         await db.query(
@@ -2950,32 +2953,32 @@ app.put('/admin/affiliates/:id/status', authenticateToken, requireAdmin, async (
         res.json({ message: 'Status atualizado' });
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
-            return res.status(500).json({ message: 'Execute setup_db para habilitar afiliados' });
+            return res.status(500).json({ message: 'Execute setup_db para habilitar indicadores' });
         }
         console.error(err);
-        res.status(500).json({ message: 'Erro ao atualizar afiliado' });
+        res.status(500).json({ message: 'Erro ao atualizar indicador' });
     }
 });
 
-// Delete affiliate (remove affiliate status, keep user)
-app.delete('/admin/affiliates/:id', authenticateToken, requireAdmin, async (req, res) => {
+// Delete indicador (remove indicador status, keep user)
+app.delete('/admin/indicadores/:id', authenticateToken, requireAdmin, async (req, res) => {
     try {
         await db.query(
             'UPDATE users SET affiliate_type = NULL, affiliate_status = NULL, affiliate_level = NULL, updated_at = NOW() WHERE id = $1',
             [req.params.id]
         );
-        res.json({ message: 'Afiliado removido' });
+        res.json({ message: 'Indicador removido' });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Erro ao remover afiliado' });
+        res.status(500).json({ message: 'Erro ao remover indicador' });
     }
 });
 
-// Add existing user as affiliate
-app.post('/admin/affiliates/add-existing', authenticateToken, requireAdmin, async (req, res) => {
+// Add existing user as indicador
+app.post('/admin/indicadores/add-existing', authenticateToken, requireAdmin, async (req, res) => {
     const { email, affiliate_type } = req.body;
     if (!email || !affiliate_type) {
-        return res.status(400).json({ message: 'Email e tipo de afiliado sao obrigatorios' });
+        return res.status(400).json({ message: 'Email e tipo de indicador sao obrigatorios' });
     }
     try {
         const { rows } = await db.query('SELECT id, name, email, affiliate_type, referral_code FROM users WHERE email = $1', [email]);
@@ -2984,12 +2987,12 @@ app.post('/admin/affiliates/add-existing', authenticateToken, requireAdmin, asyn
         }
         const user = rows[0];
         if (user.affiliate_type) {
-            return res.status(400).json({ message: 'Este usuario ja e afiliado' });
+            return res.status(400).json({ message: 'Este usuario ja e indicador' });
         }
         // Generate referral code if user doesn't have one
         let referralCode = user.referral_code;
         if (!referralCode) {
-            referralCode = generateReferralCode(user.name);
+            referralCode = await generateReferralCode(user.name);
         }
         const { rows: updated } = await db.query(
             `UPDATE users SET affiliate_type = $1, affiliate_status = 'active', referral_code = COALESCE(referral_code, $2), updated_at = NOW()
@@ -2999,7 +3002,7 @@ app.post('/admin/affiliates/add-existing', authenticateToken, requireAdmin, asyn
         res.json(updated[0]);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Erro ao adicionar afiliado' });
+        res.status(500).json({ message: 'Erro ao adicionar indicador' });
     }
 });
 
@@ -5582,10 +5585,10 @@ app.post('/auth/verify-otp', async (req, res) => {
 });
 
 // =============================================
-// AFFILIATE CLICK STATS
+// INDICACAO CLICK STATS
 // =============================================
 
-app.get('/affiliate/click-stats', authenticateToken, async (req, res) => {
+app.get('/indicacao/click-stats', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.id;
         const { rows: totalRows } = await db.query(
@@ -5615,7 +5618,7 @@ app.get('/affiliate/click-stats', authenticateToken, async (req, res) => {
 // =============================================
 
 // User: Request payout
-app.post('/affiliate/payouts/request', authenticateToken, async (req, res) => {
+app.post('/indicacao/payouts/request', authenticateToken, async (req, res) => {
     try {
         const { amount, pixKey } = req.body;
         const userId = req.user.id;
@@ -5657,7 +5660,7 @@ app.post('/affiliate/payouts/request', authenticateToken, async (req, res) => {
 });
 
 // User: Payout history
-app.get('/affiliate/payouts/history', authenticateToken, async (req, res) => {
+app.get('/indicacao/payouts/history', authenticateToken, async (req, res) => {
     try {
         const { rows } = await db.query(
             'SELECT * FROM payouts WHERE user_id = $1 ORDER BY requested_at DESC',
@@ -5803,8 +5806,8 @@ app.delete('/admin/creatives/:id', authenticateToken, requireAdmin, async (req, 
     }
 });
 
-// Affiliate: List active creatives
-app.get('/affiliate/creatives', authenticateToken, async (req, res) => {
+// Indicacao: List active creatives
+app.get('/indicacao/creatives', authenticateToken, async (req, res) => {
     try {
         const { rows } = await db.query('SELECT * FROM affiliate_creatives WHERE active = true ORDER BY sort_order ASC, created_at DESC');
         res.json(rows);
@@ -5816,10 +5819,10 @@ app.get('/affiliate/creatives', authenticateToken, async (req, res) => {
 });
 
 // =============================================
-// AFFILIATE REPORTS (Admin)
+// INDICACAO REPORTS (Admin)
 // =============================================
 
-app.get('/admin/affiliate-reports', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/admin/indicacao-reports', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { startDate, endDate, affiliateId } = req.query;
 
@@ -5876,7 +5879,7 @@ app.get('/admin/affiliate-reports', authenticateToken, requireAdmin, async (req,
 });
 
 // Admin: Export CSV
-app.get('/admin/affiliate-reports/export', authenticateToken, requireAdmin, async (req, res) => {
+app.get('/admin/indicacao-reports/export', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { startDate, endDate, affiliateId } = req.query;
 
@@ -5909,7 +5912,7 @@ app.get('/admin/affiliate-reports/export', authenticateToken, requireAdmin, asyn
         });
 
         res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', 'attachment; filename=relatorio-afiliados.csv');
+        res.setHeader('Content-Disposition', 'attachment; filename=relatorio-indicadores.csv');
         res.send(csv);
     } catch (err) {
         console.error(err);
@@ -5988,8 +5991,8 @@ app.delete('/admin/coupons/:id', authenticateToken, requireAdmin, async (req, re
     }
 });
 
-// Affiliate: Get my coupon
-app.get('/affiliate/my-coupon', authenticateToken, async (req, res) => {
+// Indicacao: Get my coupon
+app.get('/indicacao/my-coupon', authenticateToken, async (req, res) => {
     try {
         const { rows } = await db.query(
             'SELECT * FROM affiliate_coupons WHERE affiliate_user_id = $1 AND active = true ORDER BY created_at DESC LIMIT 1',

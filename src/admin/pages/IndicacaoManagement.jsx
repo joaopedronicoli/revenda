@@ -29,7 +29,7 @@ const statusConfig = {
     inactive: { label: 'Inativo', color: 'bg-red-100 text-red-800', icon: XCircle }
 }
 
-export default function AffiliateManagement() {
+export default function IndicacaoManagement() {
     const { isAdmin } = useAuth()
     const [affiliates, setAffiliates] = useState([])
     const [loading, setLoading] = useState(true)
@@ -52,7 +52,7 @@ export default function AffiliateManagement() {
     const loadAffiliates = async () => {
         setLoading(true)
         try {
-            const { data } = await api.get('/admin/affiliates')
+            const { data } = await api.get('/admin/indicadores')
             setAffiliates(Array.isArray(data) ? data : [])
         } catch (err) {
             console.error('Error loading affiliates:', err)
@@ -66,27 +66,27 @@ export default function AffiliateManagement() {
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active'
         setToggling(affiliateId)
         try {
-            await api.put(`/admin/affiliates/${affiliateId}/status`, { status: newStatus })
+            await api.put(`/admin/indicadores/${affiliateId}/status`, { status: newStatus })
             setAffiliates(prev =>
                 prev.map(a => a.id === affiliateId ? { ...a, affiliate_status: newStatus } : a)
             )
         } catch (err) {
             console.error('Error toggling affiliate status:', err)
-            alert('Erro ao alterar status do afiliado')
+            alert('Erro ao alterar status do indicador')
         } finally {
             setToggling(null)
         }
     }
 
     const deleteAffiliate = async (affiliateId, affiliateName) => {
-        if (!confirm(`Tem certeza que deseja remover "${affiliateName}" como afiliado? O usuario sera mantido, apenas o status de afiliado sera removido.`)) return
+        if (!confirm(`Tem certeza que deseja remover "${affiliateName}" como indicador? O usuario sera mantido, apenas o status de indicador sera removido.`)) return
         setDeleting(affiliateId)
         try {
-            await api.delete(`/admin/affiliates/${affiliateId}`)
+            await api.delete(`/admin/indicadores/${affiliateId}`)
             setAffiliates(prev => prev.filter(a => a.id !== affiliateId))
         } catch (err) {
             console.error('Error deleting affiliate:', err)
-            alert('Erro ao remover afiliado')
+            alert('Erro ao remover indicador')
         } finally {
             setDeleting(null)
         }
@@ -112,7 +112,7 @@ export default function AffiliateManagement() {
             loadAffiliates()
         } catch (err) {
             console.error('Error creating affiliate:', err)
-            setCreateError(err.response?.data?.message || 'Erro ao criar afiliado')
+            setCreateError(err.response?.data?.message || 'Erro ao criar indicador')
         } finally {
             setCreating(false)
         }
@@ -126,7 +126,7 @@ export default function AffiliateManagement() {
         setCreating(true)
         setCreateError('')
         try {
-            await api.post('/admin/affiliates/add-existing', {
+            await api.post('/admin/indicadores/add-existing', {
                 email: existingEmail,
                 affiliate_type: existingType
             })
@@ -134,7 +134,7 @@ export default function AffiliateManagement() {
             loadAffiliates()
         } catch (err) {
             console.error('Error adding existing affiliate:', err)
-            setCreateError(err.response?.data?.message || 'Erro ao adicionar afiliado')
+            setCreateError(err.response?.data?.message || 'Erro ao adicionar indicador')
         } finally {
             setCreating(false)
         }
@@ -176,20 +176,20 @@ export default function AffiliateManagement() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Afiliados</h1>
-                    <p className="text-slate-500">Gerencie os afiliados e suas comissoes</p>
+                    <h1 className="text-2xl font-bold text-slate-900">Indicadores</h1>
+                    <p className="text-slate-500">Gerencie os indicadores e suas comissoes</p>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2 text-sm text-slate-500">
                         <Users className="w-4 h-4" />
-                        {affiliates.length} afiliados
+                        {affiliates.length} indicadores
                     </div>
                     <button
                         onClick={() => setShowAddAffiliate(true)}
                         className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
                     >
                         <UserPlus className="w-4 h-4" />
-                        Adicionar Afiliado
+                        Adicionar Indicador
                     </button>
                 </div>
             </div>
@@ -217,7 +217,7 @@ export default function AffiliateManagement() {
                 ) : filteredAffiliates.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                         <Users className="w-12 h-12 mb-2" />
-                        <p>Nenhum afiliado encontrado</p>
+                        <p>Nenhum indicador encontrado</p>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -335,7 +335,7 @@ export default function AffiliateManagement() {
                                                         onClick={() => deleteAffiliate(affiliate.id, affiliate.name)}
                                                         disabled={deleting === affiliate.id}
                                                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                                        title="Remover afiliado"
+                                                        title="Remover indicador"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
@@ -350,13 +350,13 @@ export default function AffiliateManagement() {
                 )}
             </div>
 
-            {/* Add Affiliate Modal */}
+            {/* Add Indicador Modal */}
             {showAddAffiliate && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl max-w-md w-full">
                         <div className="p-6 border-b border-slate-200">
                             <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-slate-900">Adicionar Afiliado</h2>
+                                <h2 className="text-xl font-bold text-slate-900">Adicionar Indicador</h2>
                                 <button
                                     onClick={closeModal}
                                     className="text-slate-400 hover:text-slate-600 text-xl"
@@ -394,7 +394,7 @@ export default function AffiliateManagement() {
                             {addMode === 'existing' ? (
                                 <>
                                     <p className="text-sm text-slate-500">
-                                        Busque um usuario ja cadastrado pelo email para torna-lo afiliado.
+                                        Busque um usuario ja cadastrado pelo email para torna-lo indicador.
                                     </p>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Email do usuario *</label>
@@ -407,7 +407,7 @@ export default function AffiliateManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Afiliado</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Indicador</label>
                                         <select
                                             value={existingType}
                                             onChange={(e) => setExistingType(e.target.value)}
@@ -430,14 +430,14 @@ export default function AffiliateManagement() {
                                             disabled={creating}
                                             className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
                                         >
-                                            {creating ? 'Adicionando...' : 'Tornar Afiliado'}
+                                            {creating ? 'Adicionando...' : 'Tornar Indicador'}
                                         </button>
                                     </div>
                                 </>
                             ) : (
                                 <>
                                     <p className="text-sm text-slate-500">
-                                        Crie um novo usuario e ja configure como afiliado.
+                                        Crie um novo usuario e ja configure como indicador.
                                     </p>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nome *</label>
@@ -446,7 +446,7 @@ export default function AffiliateManagement() {
                                             value={newAffiliate.name}
                                             onChange={(e) => setNewAffiliate(prev => ({ ...prev, name: e.target.value }))}
                                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                                            placeholder="Nome do afiliado"
+                                            placeholder="Nome do indicador"
                                         />
                                     </div>
                                     <div>
@@ -471,7 +471,7 @@ export default function AffiliateManagement() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Afiliado</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Indicador</label>
                                         <select
                                             value={newAffiliate.affiliate_type}
                                             onChange={(e) => setNewAffiliate(prev => ({ ...prev, affiliate_type: e.target.value }))}
@@ -494,7 +494,7 @@ export default function AffiliateManagement() {
                                             disabled={creating}
                                             className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
                                         >
-                                            {creating ? 'Criando...' : 'Criar Afiliado'}
+                                            {creating ? 'Criando...' : 'Criar Indicador'}
                                         </button>
                                     </div>
                                 </>

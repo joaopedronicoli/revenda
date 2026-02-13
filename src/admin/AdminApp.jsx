@@ -11,10 +11,10 @@ import RecoveryTemplates from './pages/RecoveryTemplates'
 import AppSettings from './pages/AppSettings'
 import Documentation from './pages/Documentation'
 import CleanupDuplicates from './pages/CleanupDuplicates'
-import AffiliateManagement from './pages/AffiliateManagement'
+import IndicacaoManagement from './pages/IndicacaoManagement'
 import ProductManagement from './pages/ProductManagement'
 import PayoutManagement from './pages/PayoutManagement'
-import AffiliateReports from './pages/AffiliateReports'
+import IndicacaoReports from './pages/IndicacaoReports'
 import CreativeManagement from './pages/CreativeManagement'
 import PaymentGateways from './pages/PaymentGateways'
 import Connections from './pages/Connections'
@@ -61,9 +61,9 @@ export default function AdminApp() {
                     <Route path="users" element={<UsersManagement />} />
                     <Route path="abandoned-carts" element={<AbandonedCarts />} />
                     <Route path="documentation" element={<Documentation />} />
-                    <Route path="affiliates" element={
+                    <Route path="indicadores" element={
                         <AdminProtectedRoute adminOnly>
-                            <AffiliateManagement />
+                            <IndicacaoManagement />
                         </AdminProtectedRoute>
                     } />
                     <Route path="payouts" element={
@@ -71,9 +71,9 @@ export default function AdminApp() {
                             <PayoutManagement />
                         </AdminProtectedRoute>
                     } />
-                    <Route path="affiliate-reports" element={
+                    <Route path="indicacao-reports" element={
                         <AdminProtectedRoute adminOnly>
-                            <AffiliateReports />
+                            <IndicacaoReports />
                         </AdminProtectedRoute>
                     } />
                     <Route path="creatives" element={

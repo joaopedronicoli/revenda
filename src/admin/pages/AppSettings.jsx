@@ -50,7 +50,7 @@ const settingsConfig = {
     },
     min_payout_amount: {
         label: 'Valor Minimo de Saque',
-        description: 'Valor minimo que um afiliado precisa ter para solicitar saque',
+        description: 'Valor minimo que um indicador precisa ter para solicitar saque',
         icon: Wallet,
         type: 'number',
         suffix: 'R$'
@@ -270,11 +270,11 @@ export default function AppSettings() {
                         </div>
                     </div>
 
-                    {/* Affiliate Settings */}
+                    {/* Indicadores Settings */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                         <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                             <Wallet className="w-5 h-5" />
-                            Afiliados
+                            Indicadores
                         </h2>
                         <div className="space-y-6">
                             {['min_payout_amount'].map((key) => {

@@ -77,7 +77,7 @@ export default function PayoutManagement() {
                     <Wallet className="w-6 h-6" />
                     Gestao de Saques
                 </h1>
-                <p className="text-slate-500">Gerencie as solicitacoes de saque dos afiliados</p>
+                <p className="text-slate-500">Gerencie as solicitacoes de saque dos indicadores</p>
             </div>
 
             {/* Tabs */}
@@ -208,7 +208,7 @@ export default function PayoutManagement() {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className="bg-white rounded-xl max-w-md w-full p-6">
                         <h2 className="text-xl font-bold text-slate-900 mb-4">Rejeitar Saque</h2>
-                        <p className="text-sm text-slate-500 mb-4">O valor sera devolvido ao saldo do afiliado.</p>
+                        <p className="text-sm text-slate-500 mb-4">O valor sera devolvido ao saldo do indicador.</p>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Motivo (opcional)</label>
                             <textarea

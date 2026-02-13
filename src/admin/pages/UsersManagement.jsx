@@ -145,7 +145,7 @@ export default function UsersManagement() {
             setReferralInput('')
             loadUsers()
         } catch (err) {
-            setReferralError(err.response?.data?.message || 'Erro ao vincular afiliado')
+            setReferralError(err.response?.data?.message || 'Erro ao vincular indicador')
         } finally {
             setSavingReferral(false)
         }
@@ -413,7 +413,7 @@ export default function UsersManagement() {
                                                     type="text"
                                                     value={referralInput}
                                                     onChange={e => setReferralInput(e.target.value.toUpperCase())}
-                                                    placeholder="Codigo do afiliado"
+                                                    placeholder="Codigo do indicador"
                                                     className="px-2 py-1 border border-slate-300 rounded text-sm w-40 font-mono"
                                                 />
                                                 <button

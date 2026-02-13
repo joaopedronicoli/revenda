@@ -48,9 +48,9 @@ const menuItems = [
         path: '/admin/abandoned-carts'
     },
     {
-        title: 'Afiliados',
+        title: 'Indicadores',
         icon: UserCheck,
-        path: '/admin/affiliates',
+        path: '/admin/indicadores',
         adminOnly: true
     },
     {
@@ -62,7 +62,7 @@ const menuItems = [
     {
         title: 'Relatorios',
         icon: BarChart3,
-        path: '/admin/affiliate-reports',
+        path: '/admin/indicacao-reports',
         adminOnly: true
     },
     {

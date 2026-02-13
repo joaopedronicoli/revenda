@@ -97,9 +97,9 @@ export default function CreativeManagement() {
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                         <Image className="w-6 h-6" />
-                        Materiais de Afiliados
+                        Materiais de Indicadores
                     </h1>
-                    <p className="text-slate-500">Gerencie banners, imagens e materiais para afiliados</p>
+                    <p className="text-slate-500">Gerencie banners, imagens e materiais para indicadores</p>
                 </div>
                 <button
                     onClick={openCreate}

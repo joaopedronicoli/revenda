@@ -1884,7 +1884,7 @@ app.post('/orders', authenticateToken, async (req, res) => {
 });
 
 app.put('/orders/:id', authenticateToken, async (req, res) => {
-    const { status, tracking_code, tracking_url, ipag_transaction_id, ipag_status, woocommerce_order_id, woocommerce_order_number, total, coupon_code, coupon_discount } = req.body;
+    const { status, tracking_code, tracking_url, ipag_transaction_id, ipag_status, woocommerce_order_id, woocommerce_order_number, total, coupon_code, coupon_discount, address_id } = req.body;
 
     try {
         const updates = [];
@@ -1893,6 +1893,7 @@ app.put('/orders/:id', authenticateToken, async (req, res) => {
 
         if (status !== undefined) { paramCount++; updates.push(`status = $${paramCount}`); values.push(status); }
         if (total !== undefined) { paramCount++; updates.push(`total = $${paramCount}`); values.push(total); }
+        if (address_id !== undefined) { paramCount++; updates.push(`address_id = $${paramCount}`); values.push(address_id); }
         if (tracking_code !== undefined) { paramCount++; updates.push(`tracking_code = $${paramCount}`); values.push(tracking_code); }
         if (tracking_url !== undefined) { paramCount++; updates.push(`tracking_url = $${paramCount}`); values.push(tracking_url); }
         if (ipag_transaction_id !== undefined) { paramCount++; updates.push(`ipag_transaction_id = $${paramCount}`); values.push(ipag_transaction_id); }

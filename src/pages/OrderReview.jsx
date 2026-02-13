@@ -169,7 +169,7 @@ export default function OrderReview() {
         }
     }
 
-    // Fetch available payment methods when address changes
+    // Fetch available payment methods + update order address when address changes
     useEffect(() => {
         if (!selectedAddress) return
         const fetchGatewayInfo = async () => {
@@ -181,6 +181,13 @@ export default function OrderReview() {
             }
         }
         fetchGatewayInfo()
+
+        // Update address on existing pending order
+        if (paymentData?.orderId && selectedAddress?.id) {
+            api.put(`/orders/${paymentData.orderId}`, { address_id: selectedAddress.id }).catch(err => {
+                console.warn('Erro ao atualizar endereco do pedido:', err.message)
+            })
+        }
     }, [selectedAddress?.id])
 
     // Create order after kit selection (for first orders)

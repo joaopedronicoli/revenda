@@ -781,19 +781,21 @@ app.get('/admin/woocommerce/products', authenticateToken, requireAdmin, async (r
     }
 });
 
-// Helper: strip HTML tags and entities from string
+// Helper: strip HTML tags and decode entities
 function stripHtml(html) {
     if (!html) return '';
     return html
-        .replace(/<[^>]*>/g, '')       // Remove HTML tags
-        .replace(/&nbsp;/g, ' ')       // Non-breaking space
+        .replace(/<[^>]*>/g, '')                                                        // Remove HTML tags
+        .replace(/&nbsp;/g, ' ')                                                        // Non-breaking space
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>')
         .replace(/&quot;/g, '"')
         .replace(/&#0?39;/g, "'")
-        .replace(/&[a-zA-Z]+;/g, '')   // Remove any remaining HTML entities
-        .replace(/\s+/g, ' ')          // Collapse multiple whitespace
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))  // Decode hex entities (emojis etc)
+        .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))             // Decode decimal entities
+        .replace(/&[a-zA-Z]+;/g, '')                                                    // Remove remaining named entities
+        .replace(/\s+/g, ' ')                                                           // Collapse whitespace
         .trim();
 }
 

@@ -2972,16 +2972,48 @@ app.get('/admin/level-history/:userId', authenticateToken, requireAdmin, async (
 // Admin: Gestao de indicadores
 app.get('/admin/indicadores', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query(
-            `SELECT u.id, u.name, u.email, u.telefone, u.affiliate_type, u.affiliate_status, u.affiliate_level, u.affiliate_sales_count, u.commission_balance, u.referral_code, u.created_at,
-             (SELECT COUNT(*) FROM affiliate_visits WHERE affiliate_user_id = u.id) as total_clicks
-             FROM users u WHERE u.affiliate_type IS NOT NULL ORDER BY u.created_at DESC`
-        );
+        // Query basica sem dependencia de tabelas extras
+        let query = `SELECT u.id, u.name, u.email, u.telefone, u.affiliate_type, u.affiliate_status, u.affiliate_level, u.commission_balance, u.referral_code, u.created_at`;
+
+        // Tentar incluir affiliate_sales_count (pode nao existir)
+        let hasVisitsTable = false;
+        try {
+            await db.query('SELECT 1 FROM affiliate_visits LIMIT 0');
+            hasVisitsTable = true;
+        } catch (e) { /* tabela nao existe */ }
+
+        if (hasVisitsTable) {
+            query += `, (SELECT COUNT(*) FROM affiliate_visits WHERE affiliate_user_id = u.id) as total_clicks`;
+        } else {
+            query += `, 0 as total_clicks`;
+        }
+
+        query += ` FROM users u WHERE u.affiliate_type IS NOT NULL ORDER BY u.created_at DESC`;
+
+        const { rows } = await db.query(query);
         res.json(rows);
     } catch (err) {
-        if (err.message && err.message.includes('does not exist')) return res.json([]);
-        console.error(err);
-        res.status(500).json({ message: 'Erro ao listar indicadores' });
+        console.error('[GET /admin/indicadores] Erro:', err.message);
+        // Fallback: query minima so com colunas basicas
+        try {
+            const { rows } = await db.query(
+                `SELECT id, name, email, telefone, role, referral_code, commission_balance, created_at
+                 FROM users WHERE referral_code IS NOT NULL OR role = 'affiliate' ORDER BY created_at DESC`
+            );
+            // Adicionar defaults para campos faltantes
+            const mapped = rows.map(u => ({
+                ...u,
+                affiliate_type: u.affiliate_type || 'gratuito',
+                affiliate_status: u.affiliate_status || 'active',
+                affiliate_level: u.affiliate_level || 'bronze',
+                total_clicks: 0
+            }));
+            console.warn('[GET /admin/indicadores] Usando query fallback, retornando', mapped.length, 'resultados');
+            return res.json(mapped);
+        } catch (fallbackErr) {
+            console.error('[GET /admin/indicadores] Fallback tambem falhou:', fallbackErr.message);
+            return res.json([]);
+        }
     }
 });
 

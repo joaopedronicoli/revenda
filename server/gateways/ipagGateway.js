@@ -222,20 +222,45 @@ async function verifyPaymentStatus(transactionId, credentials) {
 }
 
 function parseWebhook(req) {
-    const { id, status, order_id } = req.body;
+    const body = req.body;
     const fallbackOrderId = req.query.id;
 
-    const statusStr = (status || '').toString().toLowerCase();
+    let transactionId, statusStr, statusCode, orderId;
+
+    // Format 1: v2 API — { id, attributes: { order_id, status: { code, message }, tid } }
+    if (body.attributes) {
+        transactionId = body.attributes.tid || body.id;
+        statusCode = (body.attributes.status?.code || '').toString();
+        statusStr = (body.attributes.status?.message || '').toString().toLowerCase();
+        orderId = body.attributes.order_id;
+    }
+    // Format 2: Legacy retorno — { retorno: [{ id, num_pedido, status_pagamento, mensagem_transacao }] }
+    else if (body.retorno && Array.isArray(body.retorno) && body.retorno.length > 0) {
+        const retorno = body.retorno[0];
+        transactionId = retorno.id_transacao || retorno.id;
+        statusCode = (retorno.status_pagamento || '').toString();
+        statusStr = (retorno.mensagem_transacao || '').toString().toLowerCase();
+        orderId = retorno.num_pedido;
+    }
+    // Format 3: Simple — { id, status, order_id }
+    else {
+        transactionId = body.id;
+        statusStr = (body.status || '').toString().toLowerCase();
+        statusCode = '';
+        orderId = body.order_id;
+    }
+
     const isPaid = statusStr === 'approved' || statusStr === 'capturado' || statusStr === 'sucesso' ||
+        statusStr === 'captured' ||
         statusStr.includes('aprovad') || statusStr.includes('captur') ||
-        statusStr === '5' || statusStr === '8';
+        statusCode === '5' || statusCode === '8';
 
     return {
-        transactionId: id,
-        status: statusStr,
+        transactionId,
+        status: statusStr || statusCode || '',
         isPaid,
-        orderId: fallbackOrderId,
-        orderNumber: order_id
+        orderId: fallbackOrderId || orderId,
+        orderNumber: orderId
     };
 }
 

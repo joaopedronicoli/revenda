@@ -4539,19 +4539,21 @@ app.post('/webhooks/gateway/ipag', async (req, res) => {
         console.log('iPag Gateway Webhook received:', JSON.stringify(req.body));
         const ipagGateway = require('./gateways/ipagGateway');
         const parsed = ipagGateway.parseWebhook(req);
+        console.log('iPag Gateway Webhook parsed:', JSON.stringify(parsed));
 
+        // Buscar pedido: primeiro por ID interno (campo pedido do iPag), depois por order_number
         let order = null;
-        if (parsed.orderNumber) {
-            const { rows } = await db.query('SELECT * FROM orders WHERE order_number = $1', [parsed.orderNumber]);
+        if (parsed.orderId) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [parsed.orderId]);
             if (rows.length > 0) order = rows[0];
         }
-        if (!order && parsed.orderId) {
-            const { rows } = await db.query('SELECT * FROM orders WHERE id = $1', [parsed.orderId]);
+        if (!order && parsed.orderNumber) {
+            const { rows } = await db.query('SELECT * FROM orders WHERE order_number = $1', [parsed.orderNumber]);
             if (rows.length > 0) order = rows[0];
         }
 
         if (!order) {
-            console.warn('iPag Gateway Webhook: pedido nao encontrado');
+            console.warn('iPag Gateway Webhook: pedido nao encontrado. orderId:', parsed.orderId, 'orderNumber:', parsed.orderNumber);
             return res.sendStatus(200);
         }
 
@@ -4562,6 +4564,7 @@ app.post('/webhooks/gateway/ipag', async (req, res) => {
 
         if (parsed.isPaid && order.status === 'pending') {
             await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
+            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como paid (status: ${parsed.status})`);
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
         }

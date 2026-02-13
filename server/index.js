@@ -798,20 +798,16 @@ function stripHtml(html) {
         .replace(/\s+/g, ' ')
         .trim();
 
-    // Truncate at ~200 chars without cutting mid-sentence
+    // Truncate at ~200 chars, cutting only at . or !
     if (text.length > 200) {
-        // Find the last sentence break (. ! ? or emoji) at or before 220 chars
-        const cutRegion = text.substring(0, 220);
-        const lastBreak = Math.max(
-            cutRegion.lastIndexOf('. '),
-            cutRegion.lastIndexOf('! '),
-            cutRegion.lastIndexOf('? '),
-            cutRegion.lastIndexOf(', ')
-        );
-        if (lastBreak > 100) {
+        const cutRegion = text.substring(0, 250);
+        const lastDot = cutRegion.lastIndexOf('. ');
+        const lastExcl = cutRegion.lastIndexOf('! ');
+        const lastBreak = Math.max(lastDot, lastExcl);
+        if (lastBreak > 80) {
             text = text.substring(0, lastBreak + 1).trim();
         } else {
-            // No good break found — cut at last space before 200
+            // No sentence end found — cut at last space before 200
             const lastSpace = text.lastIndexOf(' ', 200);
             text = text.substring(0, lastSpace > 50 ? lastSpace : 200).trim();
         }

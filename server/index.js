@@ -713,14 +713,15 @@ app.get('/admin/products', authenticateToken, requireAdmin, async (req, res) => 
     }
 });
 
-// Admin: update product (simplified — only editable fields: active, sort_order, special_discount, is_kit)
+// Admin: update product (editable fields: description, active, sort_order, special_discount, is_kit)
 app.put('/admin/products/:id', authenticateToken, requireAdmin, async (req, res) => {
-    const { active, sort_order, special_discount, is_kit } = req.body;
+    const { description, active, sort_order, special_discount, is_kit } = req.body;
     try {
         const updates = [];
         const values = [];
         let paramCount = 0;
 
+        if (description !== undefined) { paramCount++; updates.push(`description = $${paramCount}`); values.push(description); }
         if (active !== undefined) { paramCount++; updates.push(`active = $${paramCount}`); values.push(active); }
         if (sort_order !== undefined) { paramCount++; updates.push(`sort_order = $${paramCount}`); values.push(parseInt(sort_order) || 0); }
         if (special_discount !== undefined) { paramCount++; updates.push(`special_discount = $${paramCount}`); values.push(special_discount ? parseFloat(special_discount) : null); }
@@ -847,11 +848,12 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
 
             if (existing.length > 0) {
                 // Preserve manually-set is_kit unless auto-detected as kit
+                // Do NOT overwrite description — it may have been manually edited
                 const keepKit = existing[0].is_kit || isKit;
                 await db.query(
-                    `UPDATE products SET name = $1, description = $2, table_price = $3, image = $4,
-                     sku = $5, reference_url = $6, is_kit = $7, updated_at = NOW() WHERE woo_product_id = $8`,
-                    [wcp.name, description, price, image, wcp.sku || null, wcp.permalink || null, keepKit, wcp.id]
+                    `UPDATE products SET name = $1, table_price = $2, image = $3,
+                     sku = $4, reference_url = $5, is_kit = $6, updated_at = NOW() WHERE woo_product_id = $7`,
+                    [wcp.name, price, image, wcp.sku || null, wcp.permalink || null, keepKit, wcp.id]
                 );
                 updated++;
             } else {

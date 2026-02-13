@@ -89,6 +89,7 @@ export default function ProductManagement() {
     const openEdit = (product) => {
         setEditingProduct(product)
         setFormData({
+            description: product.description || '',
             sort_order: product.sort_order || 0,
             special_discount: product.special_discount || '',
             is_kit: product.is_kit || false,
@@ -107,6 +108,7 @@ export default function ProductManagement() {
         setSaving(true)
         try {
             const payload = {
+                description: formData.description,
                 sort_order: parseInt(formData.sort_order) || 0,
                 special_discount: formData.special_discount ? parseFloat(formData.special_discount) : null,
                 is_kit: formData.is_kit,
@@ -346,6 +348,18 @@ export default function ProductManagement() {
                         </div>
 
                         <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Descricao</label>
+                                <textarea
+                                    value={formData.description}
+                                    onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                                    rows={3}
+                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none"
+                                    placeholder="Descricao do produto"
+                                />
+                                <p className="text-xs text-slate-400 mt-1">{formData.description.length} caracteres (salva apenas localmente)</p>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Ordem de Exibicao</label>
                                 <input

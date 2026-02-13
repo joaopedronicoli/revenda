@@ -1511,7 +1511,7 @@ app.get('/users/me/sales-history', authenticateToken, async (req, res) => {
         const { page = 1, limit = 10 } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
         const { rows } = await db.query(
-            "SELECT id, order_number, total, status, created_at FROM orders WHERE user_id = $1 AND status IN ('completed','processing','paid') ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+            "SELECT id, order_number, total, status, created_at FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             [req.user.id, Number(limit), offset]
         );
         res.json(rows);

@@ -75,9 +75,11 @@ export default function ResellerDashboard() {
 
     const statusConfig = {
         pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800' },
+        paid: { label: 'Pago', color: 'bg-green-100 text-green-800' },
         processing: { label: 'Processando', color: 'bg-blue-100 text-blue-800' },
         shipped: { label: 'Enviado', color: 'bg-purple-100 text-purple-800' },
         delivered: { label: 'Entregue', color: 'bg-green-100 text-green-800' },
+        canceled: { label: 'Cancelado', color: 'bg-red-100 text-red-800' },
         cancelled: { label: 'Cancelado', color: 'bg-red-100 text-red-800' }
     }
 

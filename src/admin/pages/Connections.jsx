@@ -1,19 +1,21 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug, ExternalLink, Loader2, ChevronDown, Monitor } from 'lucide-react'
+import { ShoppingCart, Mail, Database, Megaphone, Webhook, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Edit2, Trash2, Save, X, Eye, EyeOff, AlertCircle, Plus, Plug, ExternalLink, Loader2, ChevronDown, Monitor, BarChart3, Activity } from 'lucide-react'
 import api from '../../services/api'
 
 const TYPE_ICONS = {
     woocommerce: ShoppingCart,
     smtp: Mail,
     bling: Database,
-    meta: Megaphone
+    meta: Megaphone,
+    google_analytics: BarChart3
 }
 
 const TYPE_COLORS = {
     woocommerce: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200' },
     smtp: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
     bling: { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200' },
-    meta: { bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-200' }
+    meta: { bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-200' },
+    google_analytics: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' }
 }
 
 // Fallback local caso o endpoint /admin/integration-types falhe
@@ -48,6 +50,12 @@ const FALLBACK_TYPES = {
             { key: 'app_id', label: 'App ID', type: 'text' },
             { key: 'app_secret', label: 'App Secret', type: 'password' }
         ]
+    },
+    google_analytics: {
+        name: 'Google Analytics', description: 'Google Analytics 4 (GA4) — Measurement ID', testable: true,
+        credentialFields: [
+            { key: 'measurement_id', label: 'Measurement ID (G-XXXXXXX)', type: 'text' }
+        ]
     }
 }
 
@@ -69,6 +77,9 @@ export default function Connections() {
     const [editingWebhookId, setEditingWebhookId] = useState(null)
     const [testingWebhookId, setTestingWebhookId] = useState(null)
     const [eventTypes, setEventTypes] = useState([])
+    const [eventsConfig, setEventsConfig] = useState({ meta: {}, google: {} })
+    const [savingEvents, setSavingEvents] = useState(false)
+    const [capiEnabled, setCapiEnabled] = useState(false)
 
     useEffect(() => { loadData() }, [])
 
@@ -91,14 +102,23 @@ export default function Connections() {
     const loadData = async () => {
         try {
             setLoading(true)
-            const [intRes, typesRes, whRes, evtRes] = await Promise.allSettled([
+            const [intRes, typesRes, whRes, evtRes, evtConfigRes, appSettingsRes] = await Promise.allSettled([
                 api.get('/admin/integrations'),
                 api.get('/admin/integration-types'),
                 api.get('/admin/webhook-configurations'),
-                api.get('/admin/webhook-event-types')
+                api.get('/admin/webhook-event-types'),
+                api.get('/admin/integrations/events-config'),
+                api.get('/admin/app-settings')
             ])
             if (intRes.status === 'fulfilled') {
                 setIntegrations(Array.isArray(intRes.value.data) ? intRes.value.data : [])
+            }
+            // Check CAPI enabled from app_settings
+            if (appSettingsRes.status === 'fulfilled' && Array.isArray(appSettingsRes.value.data)) {
+                const capiSetting = appSettingsRes.value.data.find(s => s.key === 'meta_capi_enabled')
+                if (capiSetting?.value === 'true') {
+                    setCapiEnabled(true)
+                }
             }
             const typesData = typesRes.status === 'fulfilled' ? typesRes.value.data : null
             const hasTypes = typesData && typeof typesData === 'object' && !Array.isArray(typesData) && Object.keys(typesData).length > 0
@@ -108,6 +128,13 @@ export default function Connections() {
             }
             if (evtRes.status === 'fulfilled') {
                 setEventTypes(Array.isArray(evtRes.value.data) ? evtRes.value.data : [])
+            }
+            if (evtConfigRes.status === 'fulfilled' && evtConfigRes.value.data) {
+                const cfg = evtConfigRes.value.data
+                setEventsConfig({
+                    meta: cfg.meta || {},
+                    google: cfg.google || {}
+                })
             }
         } catch (err) {
             setIntegrationTypes(FALLBACK_TYPES)
@@ -263,6 +290,54 @@ export default function Connections() {
             loadData()
         } catch (err) {
             setError(err.response?.data?.message || err.message)
+        }
+    }
+
+    // ==========================================
+    // Events Config handlers
+    // ==========================================
+
+    const handleToggleEvent = (platform, eventName) => {
+        setEventsConfig(prev => {
+            const current = prev[platform]?.[eventName]
+            // If undefined or true, set to false. If false, set back to true (remove the key)
+            const newVal = current === false
+            return {
+                ...prev,
+                [platform]: {
+                    ...prev[platform],
+                    [eventName]: newVal
+                }
+            }
+        })
+    }
+
+    const handleSaveEventsConfig = async () => {
+        try {
+            setSavingEvents(true)
+            await api.put('/admin/integrations/events-config', eventsConfig)
+            flashSuccess('Configuracao de eventos salva!')
+        } catch (err) {
+            setError(err.response?.data?.error || err.message)
+        } finally {
+            setSavingEvents(false)
+        }
+    }
+
+    const handleToggleCapi = async () => {
+        try {
+            const newValue = !capiEnabled
+            await api.put('/admin/integrations/meta', {
+                credentials: { capi_enabled: newValue ? 'true' : 'false' }
+            })
+            // Also sync to app_settings for analytics.js
+            await api.put('/admin/app-settings', {
+                settings: [{ key: 'meta_capi_enabled', value: String(newValue), description: 'Meta CAPI habilitado' }]
+            })
+            setCapiEnabled(newValue)
+            flashSuccess(newValue ? 'API de Conversoes ativada!' : 'API de Conversoes desativada!')
+        } catch (err) {
+            setError(err.response?.data?.error || err.message)
         }
     }
 
@@ -683,6 +758,23 @@ export default function Connections() {
                                     </div>
                                 )}
 
+                                {/* Meta CAPI Toggle */}
+                                {type === 'meta' && isConfigured && oauthOk && oauthStatus?.pixel_id && editingType !== type && (
+                                    <div className="mt-3 flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-lg p-3">
+                                        <Activity size={16} className="text-sky-600" />
+                                        <div className="flex-1">
+                                            <span className="text-xs font-medium text-sky-800">API de Conversoes (Server-Side)</span>
+                                            <p className="text-xs text-sky-600 mt-0.5">Envia eventos duplicados via servidor para melhor rastreamento</p>
+                                        </div>
+                                        <button
+                                            onClick={handleToggleCapi}
+                                            className={`${capiEnabled ? 'text-green-500' : 'text-slate-400'}`}
+                                        >
+                                            {capiEnabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* WooCommerce Webhook URL Info */}
                                 {type === 'woocommerce' && isConfigured && isActive && editingType !== type && (
                                     <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -756,6 +848,101 @@ export default function Connections() {
                         </div>
                     )
                 })}
+            </div>
+
+            {/* ==========================================
+                Tracking Events Configuration
+                ========================================== */}
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                <div className="p-5">
+                    <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-indigo-50">
+                                <Activity className="w-6 h-6 text-indigo-600" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-slate-900">Eventos de Rastreamento</h3>
+                                <p className="text-sm text-slate-500 mt-0.5">Ative ou desative eventos por plataforma (Meta Pixel e Google Analytics)</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={handleSaveEventsConfig}
+                            disabled={savingEvents}
+                            className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1 disabled:opacity-50"
+                        >
+                            {savingEvents ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                            Salvar
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Meta Pixel Events */}
+                        <div>
+                            <h4 className="text-sm font-semibold text-sky-700 mb-3 flex items-center gap-2">
+                                <Megaphone size={16} /> Meta Pixel
+                            </h4>
+                            <div className="space-y-2">
+                                {[
+                                    { key: 'PageView', label: 'PageView', desc: 'Visualizacao de pagina' },
+                                    { key: 'ViewContent', label: 'ViewContent', desc: 'Visualizacao de produto' },
+                                    { key: 'AddToCart', label: 'AddToCart', desc: 'Adicionar ao carrinho' },
+                                    { key: 'InitiateCheckout', label: 'InitiateCheckout', desc: 'Iniciar checkout' },
+                                    { key: 'AddPaymentInfo', label: 'AddPaymentInfo', desc: 'Info de pagamento' },
+                                    { key: 'Purchase', label: 'Purchase', desc: 'Compra finalizada' },
+                                    { key: 'CompleteRegistration', label: 'CompleteRegistration', desc: 'Cadastro completo' },
+                                    { key: 'Lead', label: 'Lead', desc: 'Lead (login)' }
+                                ].map(evt => (
+                                    <label key={evt.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={eventsConfig.meta?.[evt.key] !== false}
+                                            onChange={() => handleToggleEvent('meta', evt.key)}
+                                            className="w-4 h-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-medium text-slate-800">{evt.label}</span>
+                                            <span className="text-xs text-slate-500 ml-2">{evt.desc}</span>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Google Analytics Events */}
+                        <div>
+                            <h4 className="text-sm font-semibold text-amber-700 mb-3 flex items-center gap-2">
+                                <BarChart3 size={16} /> Google Analytics
+                            </h4>
+                            <div className="space-y-2">
+                                {[
+                                    { key: 'page_view', label: 'page_view', desc: 'Visualizacao de pagina' },
+                                    { key: 'view_item', label: 'view_item', desc: 'Visualizacao de produto' },
+                                    { key: 'add_to_cart', label: 'add_to_cart', desc: 'Adicionar ao carrinho' },
+                                    { key: 'remove_from_cart', label: 'remove_from_cart', desc: 'Remover do carrinho' },
+                                    { key: 'begin_checkout', label: 'begin_checkout', desc: 'Iniciar checkout' },
+                                    { key: 'add_shipping_info', label: 'add_shipping_info', desc: 'Info de envio' },
+                                    { key: 'add_payment_info', label: 'add_payment_info', desc: 'Info de pagamento' },
+                                    { key: 'purchase', label: 'purchase', desc: 'Compra finalizada' },
+                                    { key: 'sign_up', label: 'sign_up', desc: 'Cadastro' },
+                                    { key: 'login', label: 'login', desc: 'Login' }
+                                ].map(evt => (
+                                    <label key={evt.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={eventsConfig.google?.[evt.key] !== false}
+                                            onChange={() => handleToggleEvent('google', evt.key)}
+                                            className="w-4 h-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
+                                        />
+                                        <div>
+                                            <span className="text-sm font-medium text-slate-800">{evt.label}</span>
+                                            <span className="text-xs text-slate-500 ml-2">{evt.desc}</span>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* ==========================================

@@ -12,6 +12,7 @@ const emailService = require('./emailService');
 const billingService = require('./billingService');
 const gatewayRouter = require('./gateways/gatewayRouter');
 const blingService = require('./blingService');
+const { sendMetaEvent } = require('./metaCapi');
 const { updateSchema } = require('./setup_db');
 require('dotenv').config();
 
@@ -4021,6 +4022,14 @@ const INTEGRATION_TYPES = {
             { key: 'app_id', label: 'App ID', type: 'text' },
             { key: 'app_secret', label: 'App Secret', type: 'password' }
         ]
+    },
+    google_analytics: {
+        name: 'Google Analytics',
+        description: 'Google Analytics 4 (GA4) — Measurement ID',
+        testable: true,
+        credentialFields: [
+            { key: 'measurement_id', label: 'Measurement ID (G-XXXXXXX)', type: 'text' }
+        ]
     }
 };
 
@@ -4115,6 +4124,45 @@ app.post('/admin/integrations', authenticateToken, requireAdmin, async (req, res
     }
 });
 
+// =============================================
+// EVENTS CONFIG (Tracking events per platform)
+// Must be defined BEFORE :type routes to avoid being caught by wildcard
+// =============================================
+
+// GET /admin/integrations/events-config — retorna config de eventos ativados
+app.get('/admin/integrations/events-config', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query("SELECT value FROM app_settings WHERE key = 'tracking_events_config'");
+        if (rows.length > 0 && rows[0].value) {
+            try {
+                res.json(JSON.parse(rows[0].value));
+            } catch {
+                res.json({});
+            }
+        } else {
+            res.json({});
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// PUT /admin/integrations/events-config — salvar config de eventos
+app.put('/admin/integrations/events-config', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const config = req.body;
+        await db.query(
+            `INSERT INTO app_settings (key, value, description, updated_at)
+             VALUES ('tracking_events_config', $1, 'Configuracao de eventos de rastreamento por plataforma', NOW())
+             ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+            [JSON.stringify(config)]
+        );
+        res.json({ success: true, config });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // PUT /admin/integrations/:type — atualizar credenciais/active (smart merge)
 app.put('/admin/integrations/:type', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -4146,6 +4194,26 @@ app.put('/admin/integrations/:type', authenticateToken, requireAdmin, async (req
         );
 
         if (rows.length === 0) return res.status(404).json({ error: 'Integracao nao encontrada' });
+
+        // Sync tracking IDs to app_settings for analytics.js compatibility
+        const savedCreds = rows[0].credentials || {};
+        if (req.params.type === 'google_analytics' && savedCreds.measurement_id) {
+            await db.query(
+                `INSERT INTO app_settings (key, value, description, updated_at)
+                 VALUES ('google_analytics_id', $1, 'GA4 Measurement ID (sync from integrations)', NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+                [savedCreds.measurement_id]
+            );
+        }
+        if (req.params.type === 'meta' && savedCreds.pixel_id) {
+            await db.query(
+                `INSERT INTO app_settings (key, value, description, updated_at)
+                 VALUES ('facebook_pixel_id', $1, 'Facebook Pixel ID (sync from integrations)', NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()`,
+                [savedCreds.pixel_id]
+            );
+        }
+
         res.json({ ...rows[0], credentials: undefined, credentials_masked: maskCredentials(rows[0].credentials) });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -4882,6 +4950,19 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
                 testResult = { success: true, message: `Pixel "${metaResp.data?.name || creds.pixel_id}" conectado via OAuth2!` };
                 break;
             }
+            case 'google_analytics': {
+                const mid = creds.measurement_id;
+                if (!mid) {
+                    testResult = { success: false, message: 'Measurement ID nao configurado' };
+                    break;
+                }
+                if (!/^G-[A-Z0-9]{4,}$/i.test(mid)) {
+                    testResult = { success: false, message: `Formato invalido: "${mid}". Use o formato G-XXXXXXX` };
+                    break;
+                }
+                testResult = { success: true, message: `Measurement ID "${mid}" configurado com formato valido!` };
+                break;
+            }
         }
 
         // Salvar resultado do teste
@@ -4898,6 +4979,50 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
             [JSON.stringify(failResult), req.params.type]
         ).catch(() => {});
         res.json(failResult);
+    }
+});
+
+// =============================================
+// META CAPI — Conversions API (server-side)
+// =============================================
+
+// POST /meta-capi/event — endpoint chamado pelo frontend para enviar eventos server-side
+app.post('/meta-capi/event', async (req, res) => {
+    try {
+        const { event_name, event_data, user_data, event_source_url, event_id } = req.body;
+
+        if (!event_name) return res.status(400).json({ error: 'event_name obrigatorio' });
+
+        // Buscar credenciais da integracao meta
+        const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'meta'");
+        if (rows.length === 0) return res.status(404).json({ error: 'Integracao Meta nao configurada' });
+
+        const creds = rows[0].credentials || {};
+        if (!creds.pixel_id || !creds.access_token) {
+            return res.status(400).json({ error: 'Pixel ID ou Access Token nao configurado na integracao Meta' });
+        }
+
+        // Enriquecer user_data com IP e User-Agent do request
+        const enrichedUserData = {
+            ...user_data,
+            ip: user_data?.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+            userAgent: user_data?.userAgent || req.headers['user-agent']
+        };
+
+        const result = await sendMetaEvent(
+            creds.pixel_id,
+            creds.access_token,
+            event_name,
+            event_data,
+            enrichedUserData,
+            event_source_url,
+            event_id
+        );
+
+        res.json({ success: true, result });
+    } catch (err) {
+        console.error('Meta CAPI endpoint error:', err.message);
+        res.status(500).json({ error: err.message });
     }
 });
 

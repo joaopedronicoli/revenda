@@ -3090,10 +3090,12 @@ app.get('/admin/orders', authenticateToken, requireAdmin, async (req, res) => {
             SELECT o.*, u.name as user_name, u.email as user_email, u.telefone as user_phone,
                 a.nickname as addr_nickname, a.street as addr_street, a.number as addr_number,
                 a.complement as addr_complement, a.neighborhood as addr_neighborhood,
-                a.city as addr_city, a.state as addr_state, a.cep as addr_cep
+                a.city as addr_city, a.state as addr_state, a.cep as addr_cep,
+                bc.name as billing_company_name, bc.cnpj as billing_company_cnpj
             FROM orders o
             JOIN users u ON o.user_id = u.id
             LEFT JOIN addresses a ON o.address_id = a.id
+            LEFT JOIN billing_companies bc ON o.billing_company_id = bc.id
             ${whereClause}
             ORDER BY o.created_at DESC
             LIMIT $${paramCount - 1} OFFSET $${paramCount}

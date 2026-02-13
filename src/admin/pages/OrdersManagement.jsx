@@ -459,6 +459,15 @@ export default function OrdersManagement() {
                                                 <p className="font-medium text-slate-900">{o.installments}x</p>
                                             </div>
                                         )}
+                                        {o.billing_company_name && (
+                                            <div>
+                                                <span className="text-slate-500">Empresa Faturadora</span>
+                                                <p className="font-medium text-slate-900">{o.billing_company_name}</p>
+                                                {o.billing_company_cnpj && (
+                                                    <p className="text-xs text-slate-400">{o.billing_company_cnpj}</p>
+                                                )}
+                                            </div>
+                                        )}
                                         {o.gateway_type && (
                                             <div>
                                                 <span className="text-slate-500">Gateway</span>

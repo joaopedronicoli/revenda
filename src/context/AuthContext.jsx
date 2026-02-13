@@ -125,6 +125,9 @@ export const AuthProvider = ({ children }) => {
             } catch (e) { /* silencioso */ }
         }
         checkMaintenance()
+        // Re-check every 60 seconds to catch admin toggling maintenance mode
+        const maintenanceInterval = setInterval(checkMaintenance, 60000)
+        return () => clearInterval(maintenanceInterval)
     }, [])
 
     const login = async (email, password) => {

@@ -3223,6 +3223,15 @@ app.get('/admin/payment-gateways', authenticateToken, requireAdmin, async (req, 
                     creds[key] = '****' + creds[key].slice(-4);
                 }
             }
+            // Para mercadopago OAuth: expor status de conexao, esconder tokens internos
+            if (gw.gateway_type === 'mercadopago') {
+                creds.oauth_connected = !!gw.credentials?.access_token;
+                delete creds.access_token;
+                delete creds.refresh_token;
+                delete creds.token_expires_at;
+                delete creds.oauth_state;
+                delete creds.mp_user_id;
+            }
             return { ...gw, credentials_masked: creds, credentials: undefined };
         });
 
@@ -3329,6 +3338,196 @@ app.post('/admin/payment-gateways/:id/test', authenticateToken, requireAdmin, as
 app.get('/admin/gateway-types', authenticateToken, requireAdmin, async (req, res) => {
     res.json(gatewayRouter.GATEWAY_INFO);
 });
+
+// =============================================
+// MERCADO PAGO OAuth2 — authorize, callback, refresh
+// =============================================
+
+const MP_REDIRECT_URI = `${process.env.FRONTEND_URL || 'https://revenda.pelg.com.br'}/admin/payment-gateways/mercadopago/callback`;
+
+// Iniciar autorizacao OAuth do Mercado Pago
+app.get('/admin/payment-gateways/:id/mercadopago/authorize', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT * FROM payment_gateways WHERE id = $1', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Gateway nao encontrado' });
+
+        const gw = rows[0];
+        if (gw.gateway_type !== 'mercadopago') {
+            return res.status(400).json({ error: 'Este gateway nao e do tipo Mercado Pago' });
+        }
+
+        const appId = gw.credentials?.app_id;
+        if (!appId) {
+            return res.status(400).json({ error: 'Application ID nao configurado neste gateway' });
+        }
+
+        // Gerar state CSRF
+        const csrfToken = crypto.randomBytes(16).toString('hex');
+        const state = `${gw.id}:${csrfToken}`;
+
+        // Salvar state no gateway
+        const updatedCredentials = { ...gw.credentials, oauth_state: state };
+        await db.query(
+            'UPDATE payment_gateways SET credentials = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(updatedCredentials), gw.id]
+        );
+
+        const authUrl = `https://auth.mercadopago.com.br/authorization?client_id=${appId}&response_type=code&platform_id=mp&redirect_uri=${encodeURIComponent(MP_REDIRECT_URI)}&state=${encodeURIComponent(state)}`;
+
+        res.json({ authUrl });
+    } catch (err) {
+        console.error('Erro ao gerar URL de autorizacao MP:', err);
+        res.status(500).json({ error: 'Erro ao gerar URL de autorizacao' });
+    }
+});
+
+// Callback do OAuth do Mercado Pago (rota publica — redirect do MP)
+app.get('/admin/payment-gateways/mercadopago/callback', async (req, res) => {
+    const { code, state, error } = req.query;
+
+    if (error) {
+        return res.send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:40px">
+            <h2 style="color:#dc2626">Erro na autorizacao do Mercado Pago</h2>
+            <p>${String(error).replace(/</g, '&lt;')}</p>
+            <script>setTimeout(() => window.close(), 3000);</script>
+            </body></html>
+        `);
+    }
+
+    if (!code || !state) {
+        return res.status(400).send('Codigo de autorizacao ou state nao fornecido');
+    }
+
+    try {
+        // Extrair gatewayId do state
+        const [gatewayId] = String(state).split(':');
+        if (!gatewayId) return res.status(400).send('State invalido');
+
+        const { rows } = await db.query('SELECT * FROM payment_gateways WHERE id = $1', [gatewayId]);
+        if (rows.length === 0) return res.status(404).send('Gateway nao encontrado');
+
+        const gw = rows[0];
+
+        // Validar CSRF state
+        if (gw.credentials?.oauth_state !== state) {
+            return res.status(400).send('State CSRF invalido');
+        }
+
+        // Trocar code por tokens
+        const tokenResponse = await axios.post('https://api.mercadopago.com/oauth/token', {
+            client_id: gw.credentials.app_id,
+            client_secret: gw.credentials.app_secret,
+            code: code,
+            redirect_uri: MP_REDIRECT_URI,
+            grant_type: 'authorization_code'
+        });
+
+        const { access_token, refresh_token, expires_in, public_key, user_id } = tokenResponse.data;
+
+        // Salvar tokens no credentials JSONB
+        const updatedCredentials = {
+            ...gw.credentials,
+            access_token,
+            refresh_token,
+            public_key: public_key || gw.credentials.public_key,
+            mp_user_id: user_id,
+            token_expires_at: new Date(Date.now() + (expires_in * 1000)).toISOString()
+        };
+        delete updatedCredentials.oauth_state;
+
+        await db.query(
+            'UPDATE payment_gateways SET credentials = $1, updated_at = NOW() WHERE id = $2',
+            [JSON.stringify(updatedCredentials), gw.id]
+        );
+
+        console.log(`[MP OAuth] Conectado com sucesso para gateway ${gw.id}`);
+
+        res.send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:40px">
+            <h2 style="color:#16a34a">Mercado Pago conectado com sucesso!</h2>
+            <p>Voce pode fechar esta janela.</p>
+            <script>
+                window.opener && window.opener.postMessage('mercadopago-oauth-success', '*');
+                setTimeout(() => window.close(), 2000);
+            </script>
+            </body></html>
+        `);
+    } catch (err) {
+        console.error('[MP OAuth] Erro no callback:', err.response?.data || err.message);
+        const errorMsg = String(err.response?.data?.message || err.message).replace(/</g, '&lt;');
+        res.status(500).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:40px">
+            <h2 style="color:#dc2626">Erro ao conectar Mercado Pago</h2>
+            <p>${errorMsg}</p>
+            <script>setTimeout(() => window.close(), 5000);</script>
+            </body></html>
+        `);
+    }
+});
+
+// Refresh token do Mercado Pago
+async function refreshMercadoPagoToken(gatewayId) {
+    const { rows } = await db.query('SELECT * FROM payment_gateways WHERE id = $1', [gatewayId]);
+    if (rows.length === 0) throw new Error('Gateway nao encontrado');
+
+    const gw = rows[0];
+    if (!gw.credentials?.refresh_token) throw new Error('Refresh token nao disponivel');
+
+    const tokenResponse = await axios.post('https://api.mercadopago.com/oauth/token', {
+        client_id: gw.credentials.app_id,
+        client_secret: gw.credentials.app_secret,
+        grant_type: 'refresh_token',
+        refresh_token: gw.credentials.refresh_token
+    });
+
+    const { access_token, refresh_token, expires_in, public_key } = tokenResponse.data;
+
+    const updatedCredentials = {
+        ...gw.credentials,
+        access_token,
+        refresh_token: refresh_token || gw.credentials.refresh_token,
+        public_key: public_key || gw.credentials.public_key,
+        token_expires_at: new Date(Date.now() + (expires_in * 1000)).toISOString()
+    };
+
+    await db.query(
+        'UPDATE payment_gateways SET credentials = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(updatedCredentials), gatewayId]
+    );
+
+    console.log(`[MP AutoRefresh] Token renovado para gateway ${gatewayId}`);
+}
+
+// Auto-refresh dos tokens do Mercado Pago (a cada 30 minutos)
+async function autoRefreshMercadoPagoTokens() {
+    try {
+        const { rows } = await db.query(
+            "SELECT id, credentials FROM payment_gateways WHERE gateway_type = 'mercadopago' AND active = true"
+        );
+
+        for (const gw of rows) {
+            if (!gw.credentials?.access_token || !gw.credentials?.token_expires_at) continue;
+
+            const expiresAt = new Date(gw.credentials.token_expires_at);
+            const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+
+            if (expiresAt < oneHourFromNow) {
+                try {
+                    console.log(`[MP AutoRefresh] Token do gateway ${gw.id} expira em breve, renovando...`);
+                    await refreshMercadoPagoToken(gw.id);
+                } catch (err) {
+                    console.error(`[MP AutoRefresh] Erro gateway ${gw.id}:`, err.message);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[MP AutoRefresh] Erro geral:', err.message);
+    }
+}
+
+setInterval(autoRefreshMercadoPagoTokens, 30 * 60 * 1000);
+setTimeout(autoRefreshMercadoPagoTokens, 15000);
 
 // =============================================
 // ADMIN - Integracoes (Conexoes externas)

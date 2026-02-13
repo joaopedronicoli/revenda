@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Building2, Plus, Trash2, Edit2, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Wifi, Eye, EyeOff, ChevronDown, ChevronUp, Save, X, AlertCircle } from 'lucide-react'
+import { CreditCard, Building2, Plus, Trash2, Edit2, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Wifi, Eye, EyeOff, ChevronDown, ChevronUp, Save, X, AlertCircle, Link, Unlink, Loader2 } from 'lucide-react'
 import api from '../../services/api'
 
 const BRAZILIAN_STATES = [
@@ -21,8 +21,22 @@ export default function PaymentGateways() {
     const [testingId, setTestingId] = useState(null)
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
+    const [connectingOAuth, setConnectingOAuth] = useState(null)
 
     useEffect(() => { loadData() }, [])
+
+    // Listener para callback OAuth do Mercado Pago
+    useEffect(() => {
+        const handler = (event) => {
+            if (event.data === 'mercadopago-oauth-success') {
+                flashSuccess('Mercado Pago conectado com sucesso!')
+                setConnectingOAuth(null)
+                loadData()
+            }
+        }
+        window.addEventListener('message', handler)
+        return () => window.removeEventListener('message', handler)
+    }, [])
 
     const loadData = async () => {
         try {
@@ -306,6 +320,46 @@ export default function PaymentGateways() {
                     </code>
                 </div>
 
+                {/* Botao OAuth Mercado Pago (so aparece ao editar, com app_id preenchido) */}
+                {form.gateway_type === 'mercadopago' && gateway?.id && (
+                    <div className="bg-sky-50 border border-sky-200 rounded-lg p-4 mb-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-sky-900">Conexao OAuth</p>
+                                <p className="text-xs text-sky-700 mt-0.5">
+                                    {gateway?.credentials_masked?.oauth_connected
+                                        ? 'Mercado Pago conectado via OAuth'
+                                        : 'Conecte sua conta do Mercado Pago para obter os tokens automaticamente'}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {gateway?.credentials_masked?.oauth_connected && (
+                                    <span className="flex items-center gap-1 text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded">
+                                        <CheckCircle2 size={12} /> Conectado
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => connectMercadoPago(gateway.id)}
+                                    disabled={connectingOAuth === gateway.id || !form.credentials?.app_id}
+                                    className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50 transition-colors ${
+                                        gateway?.credentials_masked?.oauth_connected
+                                            ? 'border border-sky-300 text-sky-700 hover:bg-sky-100'
+                                            : 'bg-sky-500 text-white hover:bg-sky-600'
+                                    }`}
+                                >
+                                    {connectingOAuth === gateway.id ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Link size={14} />
+                                    )}
+                                    {gateway?.credentials_masked?.oauth_connected ? 'Reconectar' : 'Conectar com Mercado Pago'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="flex gap-2">
                     <button onClick={handleSave} className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-1">
                         <Save size={16} /> Salvar
@@ -363,6 +417,17 @@ export default function PaymentGateways() {
             loadData()
         } catch (err) {
             setError(err.message)
+        }
+    }
+
+    const connectMercadoPago = async (gatewayId) => {
+        setConnectingOAuth(gatewayId)
+        try {
+            const { data } = await api.get(`/admin/payment-gateways/${gatewayId}/mercadopago/authorize`)
+            window.open(data.authUrl, '_blank', 'width=600,height=700')
+        } catch (err) {
+            setError(err.response?.data?.error || err.message || 'Erro ao conectar Mercado Pago')
+            setConnectingOAuth(null)
         }
     }
 
@@ -531,17 +596,51 @@ export default function PaymentGateways() {
                                                                         ))}
                                                                         <span className="text-xs text-slate-400">| Prioridade: {gw.priority}</span>
                                                                     </div>
-                                                                    {/* Masked credentials */}
+                                                                    {/* OAuth status para Mercado Pago */}
+                                                                    {gw.gateway_type === 'mercadopago' && (
+                                                                        <div className="mt-1">
+                                                                            {gw.credentials_masked?.oauth_connected ? (
+                                                                                <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                                                                                    <Link size={10} /> OAuth Conectado
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="inline-flex items-center gap-1 text-xs text-red-500 font-medium">
+                                                                                    <Unlink size={10} /> Nao conectado
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                    {/* Masked credentials (excluir oauth_connected do display) */}
                                                                     {gw.credentials_masked && (
                                                                         <div className="mt-1 flex gap-2 flex-wrap">
-                                                                            {Object.entries(gw.credentials_masked).map(([key, val]) => (
-                                                                                <span key={key} className="text-xs text-slate-400">{key}: {val}</span>
+                                                                            {Object.entries(gw.credentials_masked).filter(([key]) => key !== 'oauth_connected').map(([key, val]) => (
+                                                                                <span key={key} className="text-xs text-slate-400">{key}: {String(val)}</span>
                                                                             ))}
                                                                         </div>
                                                                     )}
                                                                 </div>
                                                             </div>
                                                             <div className="flex items-center gap-1">
+                                                                {/* Botao OAuth MP */}
+                                                                {gw.gateway_type === 'mercadopago' && gw.credentials_masked?.app_id && (
+                                                                    <button
+                                                                        onClick={() => connectMercadoPago(gw.id)}
+                                                                        disabled={connectingOAuth === gw.id}
+                                                                        className={`px-2.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 ${
+                                                                            gw.credentials_masked?.oauth_connected
+                                                                                ? 'text-slate-600 border border-slate-300 hover:bg-slate-50'
+                                                                                : 'bg-sky-500 text-white hover:bg-sky-600'
+                                                                        }`}
+                                                                        title={gw.credentials_masked?.oauth_connected ? 'Reconectar' : 'Conectar com Mercado Pago'}
+                                                                    >
+                                                                        {connectingOAuth === gw.id ? (
+                                                                            <Loader2 size={12} className="animate-spin" />
+                                                                        ) : (
+                                                                            <Link size={12} />
+                                                                        )}
+                                                                        {gw.credentials_masked?.oauth_connected ? 'Reconectar' : 'Conectar'}
+                                                                    </button>
+                                                                )}
                                                                 {/* Test */}
                                                                 <button onClick={() => handleTestConnection(gw.id)} disabled={testingId === gw.id}
                                                                     className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"

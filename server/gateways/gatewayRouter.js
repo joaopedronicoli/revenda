@@ -29,9 +29,10 @@ const GATEWAY_INFO = {
     mercadopago: {
         name: 'Mercado Pago',
         supportedMethods: ['credit_card', 'pix'],
+        oauth: true,
         credentialFields: [
-            { key: 'access_token', label: 'Access Token', type: 'password' },
-            { key: 'public_key', label: 'Public Key', type: 'text' }
+            { key: 'app_id', label: 'Application ID', type: 'text' },
+            { key: 'app_secret', label: 'Application Secret', type: 'password' }
         ]
     },
     stripe: {

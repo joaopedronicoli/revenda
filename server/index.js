@@ -691,7 +691,7 @@ app.delete('/users/me', authenticateToken, async (req, res) => {
 // Public: list active products
 app.get('/products', async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM products WHERE active = true ORDER BY name ASC');
+        const { rows } = await db.query('SELECT * FROM products WHERE active = true ORDER BY sort_order ASC, name ASC');
         res.json(rows);
     } catch (err) {
         if (err.message && err.message.includes('does not exist')) {
@@ -705,7 +705,7 @@ app.get('/products', async (req, res) => {
 // Admin: list all products
 app.get('/admin/products', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { rows } = await db.query('SELECT * FROM products ORDER BY active DESC, name ASC');
+        const { rows } = await db.query('SELECT * FROM products ORDER BY active DESC, sort_order ASC, name ASC');
         res.json(rows);
     } catch (err) {
         console.error(err);

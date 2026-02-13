@@ -276,25 +276,54 @@ async function createOrUpdateWCOrder(orderId) {
     );
     const userData = userRows[0] || {};
 
-    // Buscar woo_product_id para todos os itens
+    // Buscar woo_product_id e special_discount para todos os itens
     const allItems = details.items || [];
+    const discountStandard = details.summary?.discountStandard || 0.30;
+    const TEST_PRODUCT_ID = 999;
+
     for (const item of allItems) {
-        if (!item.woo_product_id && item.id) {
-            const { rows: pRows } = await db.query('SELECT woo_product_id FROM products WHERE id = $1', [item.id]);
-            if (pRows.length > 0 && pRows[0].woo_product_id) {
-                item.woo_product_id = pRows[0].woo_product_id;
+        if (item.id) {
+            const { rows: pRows } = await db.query('SELECT woo_product_id, special_discount FROM products WHERE id = $1', [item.id]);
+            if (pRows.length > 0) {
+                if (!item.woo_product_id && pRows[0].woo_product_id) item.woo_product_id = pRows[0].woo_product_id;
+                item.special_discount = pRows[0].special_discount ? parseFloat(pRows[0].special_discount) : null;
             }
         }
     }
 
     const lineItems = allItems
         .filter(item => item.woo_product_id)
-        .map(item => ({
-            product_id: item.woo_product_id,
-            quantity: item.quantity,
-            total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
-            subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
-        }));
+        .map(item => {
+            const qty = item.quantity || 1;
+            const tablePrice = parseFloat(item.tablePrice || item.price || 0);
+            const subtotalValue = tablePrice * qty;
+
+            // Calcular desconto: special_discount do produto, ou desconto padrao do nivel
+            let discount = discountStandard;
+            if (item.special_discount != null) discount = item.special_discount;
+            if (item.id === TEST_PRODUCT_ID) discount = 0;
+
+            const totalValue = tablePrice * (1 - discount) * qty;
+
+            return {
+                product_id: item.woo_product_id,
+                quantity: qty,
+                subtotal: subtotalValue.toFixed(2),
+                total: totalValue.toFixed(2)
+            };
+        });
+
+    // Fee lines para kit, credito de comissao e cupom
+    const feeLines = [];
+    if (details.kit && details.summary?.kitPrice > 0) {
+        feeLines.push({ name: `Kit Inicial - ${details.kit.name}`, total: parseFloat(details.summary.kitPrice).toFixed(2) });
+    }
+    if (details.commission_credit_applied > 0) {
+        feeLines.push({ name: 'Credito de Comissao', total: (-parseFloat(details.commission_credit_applied)).toFixed(2) });
+    }
+    if (details.coupon_code && parseFloat(details.coupon_discount || 0) > 0) {
+        feeLines.push({ name: `Cupom ${details.coupon_code}`, total: (-parseFloat(details.coupon_discount)).toFixed(2) });
+    }
 
     // Resolver empresa faturadora
     let billingCompanyName = '';
@@ -355,6 +384,7 @@ async function createOrUpdateWCOrder(orderId) {
             country: 'BR'
         },
         line_items: lineItems,
+        fee_lines: feeLines.length > 0 ? feeLines : undefined,
         customer_note: orderNotes,
         shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
         meta_data: [

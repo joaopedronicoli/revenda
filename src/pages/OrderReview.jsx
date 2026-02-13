@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cartStore'
@@ -29,6 +29,7 @@ export default function OrderReview() {
     const [gatewayInfo, setGatewayInfo] = useState(null)
     const [resumeOrder, setResumeOrder] = useState(null)
     const resumeOrderId = searchParams.get('resumeOrderId')
+    const paymentSuccessRef = useRef(false)
 
     const isFirstOrder = !user?.first_order_completed
     const userCommissionBalance = user?.commission_balance || 0
@@ -309,6 +310,7 @@ export default function OrderReview() {
     }
 
     const handlePaymentSuccess = (paymentResult) => {
+        paymentSuccessRef.current = true
         localStorage.setItem('lastOrderId', paymentData.orderId)
         localStorage.setItem('paymentCompleted', 'true')
         localStorage.removeItem('pendingOrderId')
@@ -354,7 +356,7 @@ export default function OrderReview() {
 
     // Verificar se carrinho esta vazio MAS nao e por causa de um pagamento completo
     // Pular check se estamos retomando pagamento de um pedido existente
-    if (cart.length === 0 && !resumeOrder) {
+    if (cart.length === 0 && !resumeOrder && !paymentSuccessRef.current) {
         const paymentCompleted = localStorage.getItem('paymentCompleted')
         if (paymentCompleted === 'true') {
             localStorage.removeItem('paymentCompleted')

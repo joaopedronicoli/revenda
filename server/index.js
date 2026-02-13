@@ -876,38 +876,50 @@ app.post('/admin/bling/sync-stock', authenticateToken, requireAdmin, async (req,
         }
 
         // Get all local products with SKU
-        const { rows: products } = await db.query('SELECT id, sku FROM products WHERE sku IS NOT NULL AND sku != \'\'');
-        if (products.length === 0) {
+        const { rows: localProducts } = await db.query('SELECT id, sku FROM products WHERE sku IS NOT NULL AND sku != \'\'');
+        if (localProducts.length === 0) {
             return res.json({ success: true, updated: 0, message: 'Nenhum produto com SKU para sincronizar' });
         }
 
+        // Build local SKU -> product ID map
+        const skuMap = {};
+        for (const p of localProducts) {
+            skuMap[p.sku] = p.id;
+        }
+
+        // Fetch ALL products from Bling with pagination
+        let allBlingProducts = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+            const resp = await axios.get('https://www.bling.com.br/Api/v3/produtos', {
+                headers: { 'Authorization': `Bearer ${accessToken}` },
+                params: { pagina: page, limite: 100 }
+            });
+
+            const blingProducts = resp.data?.data || [];
+            allBlingProducts = allBlingProducts.concat(blingProducts);
+
+            hasMore = blingProducts.length === 100;
+            page++;
+
+            if (page > 50) break; // Safety limit
+        }
+
+        // Match by SKU (codigo in Bling) and update stock
         let updatedCount = 0;
-        let errors = 0;
 
-        // Fetch stock from Bling for each product by SKU
-        for (const product of products) {
-            try {
-                const resp = await axios.get(`https://www.bling.com.br/Api/v3/estoques?codigo=${encodeURIComponent(product.sku)}`, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
-
-                const estoqueData = resp.data?.data;
-                if (estoqueData && estoqueData.length > 0) {
-                    // Sum saldoFisicoTotal from all deposits
-                    const totalStock = estoqueData.reduce((sum, item) => sum + (item.saldoFisicoTotal || 0), 0);
-                    await db.query('UPDATE products SET stock_quantity = $1, updated_at = NOW() WHERE id = $2', [totalStock, product.id]);
-                    updatedCount++;
-                }
-            } catch (err) {
-                // 404 = product not found in Bling, skip silently
-                if (err.response?.status !== 404) {
-                    console.error(`Erro ao buscar estoque Bling SKU ${product.sku}:`, err.message);
-                    errors++;
-                }
+        for (const bp of allBlingProducts) {
+            const codigo = bp.codigo || '';
+            if (codigo && skuMap[codigo] !== undefined) {
+                const stock = bp.estoque?.saldoVirtualTotal || 0;
+                await db.query('UPDATE products SET stock_quantity = $1, updated_at = NOW() WHERE id = $2', [stock, skuMap[codigo]]);
+                updatedCount++;
             }
         }
 
-        res.json({ success: true, updated: updatedCount, errors, total: products.length });
+        res.json({ success: true, updated: updatedCount, blingTotal: allBlingProducts.length, total: localProducts.length });
     } catch (err) {
         console.error('Erro ao sincronizar estoque Bling:', err.message);
         res.status(500).json({ message: 'Erro ao sincronizar estoque do Bling' });

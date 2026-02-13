@@ -385,7 +385,6 @@ async function createOrUpdateWCOrder(orderId) {
         },
         line_items: lineItems,
         fee_lines: feeLines.length > 0 ? feeLines : undefined,
-        customer_note: orderNotes,
         shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
         meta_data: [
             { key: '_revenda_app_order_id', value: String(order.id) },
@@ -414,12 +413,12 @@ async function createOrUpdateWCOrder(orderId) {
     }
 
     // Se ja tem WC order, atualizar. Senao, criar novo.
+    let wcOrder;
     if (order.woocommerce_order_id) {
-        const wcOrder = await woocommerceService.updateOrder(order.woocommerce_order_id, wcOrderData);
+        wcOrder = await woocommerceService.updateOrder(order.woocommerce_order_id, wcOrderData);
         console.log(`[WC Order] Updated #${wcOrder.number || order.woocommerce_order_id} for local order ${orderId} (line_items: ${lineItems.length})`);
-        return wcOrder;
     } else {
-        const wcOrder = await woocommerceService.createOrder(wcOrderData);
+        wcOrder = await woocommerceService.createOrder(wcOrderData);
         // Salvar referencia WC no pedido local
         await db.query(
             `UPDATE orders SET order_number = $1, woocommerce_order_id = $2, woocommerce_order_number = $3,
@@ -429,8 +428,18 @@ async function createOrUpdateWCOrder(orderId) {
              orderId]
         );
         console.log(`[WC Order] Created #${wcOrder.number} for local order ${orderId} (line_items: ${lineItems.length})`);
-        return wcOrder;
     }
+
+    // Adicionar notas como nota privada do pedido (nao como nota do cliente)
+    if (orderNotes) {
+        try {
+            await woocommerceService.addOrderNote(wcOrder.id, orderNotes, false);
+        } catch (noteErr) {
+            console.warn(`[WC Order] Erro ao adicionar nota privada ao pedido #${wcOrder.number}:`, noteErr.message);
+        }
+    }
+
+    return wcOrder;
 }
 
 // Creditar comissao de indicacao

@@ -683,6 +683,49 @@ export default function Connections() {
                                     </div>
                                 )}
 
+                                {/* WooCommerce Webhook URL Info */}
+                                {type === 'woocommerce' && isConfigured && isActive && editingType !== type && (
+                                    <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                        <p className="text-xs font-semibold text-purple-800 mb-2">Webhook de Sincronizacao (configurar no WooCommerce)</p>
+                                        <div className="space-y-2">
+                                            <div>
+                                                <span className="text-xs text-purple-600 font-medium">URL de entrega:</span>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <code className="text-xs bg-white border border-purple-200 rounded px-2 py-1 text-purple-900 flex-1 break-all">
+                                                        {`${window.location.origin}/webhooks/woocommerce`}
+                                                    </code>
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(`${window.location.origin}/webhooks/woocommerce`)
+                                                            flashSuccess('URL copiada!')
+                                                        }}
+                                                        className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs hover:bg-purple-200 shrink-0"
+                                                    >
+                                                        Copiar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div>
+                                                    <span className="text-purple-600 font-medium">Topico:</span>
+                                                    <span className="text-purple-800 ml-1">Pedido atualizado</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-purple-600 font-medium">Versao da API:</span>
+                                                    <span className="text-purple-800 ml-1">WP REST API v3</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-purple-600 font-medium">Status:</span>
+                                                    <span className="text-purple-800 ml-1">Ativo</span>
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-purple-500 mt-1">
+                                                Configure este webhook no WooCommerce em: Configuracoes &gt; Avancado &gt; Webhooks
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Last test result */}
                                 {isConfigured && lastTestedAt && editingType !== type && (
                                     <div className={`mt-3 p-2.5 rounded-lg text-xs flex items-center gap-2 ${lastTest?.success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>

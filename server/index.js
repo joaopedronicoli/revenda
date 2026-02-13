@@ -2478,7 +2478,7 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
             // Orders by status (with date filter)
             db.query(`
                 SELECT status, COUNT(*) as cnt
-                FROM orders WHERE 1=1 ${dateFilterSQL}
+                FROM orders o WHERE 1=1 ${dateFilterSQL}
                 GROUP BY status
             `, dateFilterParams),
 

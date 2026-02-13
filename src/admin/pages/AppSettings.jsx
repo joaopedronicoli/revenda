@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, Save, RefreshCw, Clock, ShoppingCart, Bell, Store, Wallet } from 'lucide-react'
+import { Settings, Save, RefreshCw, Clock, ShoppingCart, Bell, Store, Wallet, AlertTriangle } from 'lucide-react'
 import api from '../../services/api'
 
 const settingsConfig = {
@@ -54,6 +54,12 @@ const settingsConfig = {
         icon: Wallet,
         type: 'number',
         suffix: 'R$'
+    },
+    maintenance_mode: {
+        label: 'Modo Manutenção',
+        description: 'Quando ativo, apenas administradores podem acessar o site. Usuários verão uma página de manutenção.',
+        icon: AlertTriangle,
+        type: 'boolean'
     }
 }
 
@@ -196,7 +202,7 @@ export default function AppSettings() {
                             Informações da Loja
                         </h2>
                         <div className="space-y-6">
-                            {['store_name', 'store_whatsapp'].map((key) => {
+                            {['store_name', 'store_whatsapp', 'maintenance_mode'].map((key) => {
                                 const config = settingsConfig[key]
                                 if (!config) return null
                                 return (

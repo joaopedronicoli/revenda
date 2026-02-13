@@ -86,6 +86,7 @@ export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null)
     const [loading, setLoading] = useState(true)
     const [roleLoading, setRoleLoading] = useState(false)
+    const [maintenanceMode, setMaintenanceMode] = useState(false)
 
     // Restore session from encrypted localStorage
     useEffect(() => {
@@ -112,6 +113,18 @@ export const AuthProvider = ({ children }) => {
             setLoading(false)
         }
         restoreSession()
+
+        // Check maintenance mode (public endpoint, no auth needed)
+        const checkMaintenance = async () => {
+            try {
+                const { data } = await api.get('/app-settings')
+                if (Array.isArray(data)) {
+                    const mm = data.find(s => s.key === 'maintenance_mode')
+                    setMaintenanceMode(mm?.value === true || mm?.value === 'true')
+                }
+            } catch (e) { /* silencioso */ }
+        }
+        checkMaintenance()
     }, [])
 
     const login = async (email, password) => {
@@ -386,7 +399,8 @@ export const AuthProvider = ({ children }) => {
             roleLoading,
             refreshRole,
             refreshApprovalStatus,
-            refreshUser
+            refreshUser,
+            maintenanceMode
         }}>
             {!loading && children}
         </AuthContext.Provider>

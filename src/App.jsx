@@ -19,9 +19,10 @@ import AffiliateDashboard from './pages/AffiliateDashboard'
 import Layout from './components/Layout'
 import CompleteProfile from './pages/CompleteProfile'
 import AdminApp from './admin/AdminApp'
+import Maintenance from './pages/Maintenance'
 
 const ProtectedRoute = ({ children, allowPending = false, allowUnverified = false, allowIncomplete = false }) => {
-  const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified, isProfileComplete } = useAuth()
+  const { user, loading, approvalStatus, roleLoading, canAccessAdmin, isEmailVerified, isProfileComplete, maintenanceMode } = useAuth()
   const location = useLocation()
 
   if (loading || roleLoading) return <div className="min-h-screen flex items-center justify-center">Carregando...</div>
@@ -30,6 +31,9 @@ const ProtectedRoute = ({ children, allowPending = false, allowUnverified = fals
 
   // Allow admins to bypass all checks
   if (canAccessAdmin) return children
+
+  // Maintenance mode — block non-admin users
+  if (maintenanceMode) return <Navigate to="/maintenance" />
 
   // Check profile completeness (document_type must exist)
   if (!allowIncomplete && !isProfileComplete) {
@@ -59,6 +63,7 @@ export default function App() {
             <Route path="/register" element={<Register />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/maintenance" element={<Maintenance />} />
 
             <Route path="/complete-profile" element={
               <ProtectedRoute allowPending={true} allowUnverified={true} allowIncomplete={true}>

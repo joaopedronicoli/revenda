@@ -1,150 +1,133 @@
 import { useEffect, useState } from 'react'
-import { useCartStore } from '../store/cartStore'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/api'
-import { CheckCircle, ArrowLeft, Loader2 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { CheckCircle, ArrowLeft, Package, ShoppingBag, ExternalLink } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function Confirmation() {
-    const { cart, getSummary, clearCart } = useCartStore()
     const { user } = useAuth()
-    const [status, setStatus] = useState('processing') // processing, success, error
-    const [message, setMessage] = useState('Processando seu pedido...')
+    const navigate = useNavigate()
+    const [order, setOrder] = useState(null)
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        if (status !== 'processing') return
-
-        // Safety check: empty cart (maybe user refreshed)
-        if (cart.length === 0) {
-            // If already cleared, we might show success or redirect? 
-            // For now assume if we land here with empty cart it's done or error.
-            // But clearing happens AFTER success. 
-            // So if empty, probably accessed directly.
-            setStatus('error')
-            setMessage('Carrinho vazio. Adicione produtos antes de finalizar.')
-            return
-        }
-
-        const processOrder = async () => {
+        const loadOrder = async () => {
             try {
-                const summary = getSummary()
+                const orderId = localStorage.getItem('lastOrderId')
+                const paymentCompleted = localStorage.getItem('paymentCompleted')
 
-                // Get selected address from localStorage
-                const selectedAddressId = localStorage.getItem('selectedAddressId')
-
-                // Get payment data from localStorage
-                const paymentDataStr = localStorage.getItem('paymentData')
-                const paymentData = paymentDataStr ? JSON.parse(paymentDataStr) : null
-
-                const orderData = {
-                    user_email: user.email,
-                    user_name: user?.name || 'N/A',
-                    user_whatsapp: user?.phone || 'N/A',
-                    user_cpf: user?.cpf || null,
-                    user_cnpj: user?.cnpj || null,
-                    user_address: {
-                        state: user?.state,
-                        city: user?.city,
-                        neighborhood: user?.neighborhood
-                    },
-                    reseller_survey: user?.survey,
-
-                    items: cart.map(item => ({
-                        id: item.id,
-                        name: item.name,
-                        quantity: item.quantity,
-                        tablePrice: item.tablePrice,
-                        reference_url: item.reference_url
-                    })),
-
-                    summary: {
-                        totalTable: summary.totalTable,
-                        totalWithDiscount: summary.totalWithDiscount,
-                        itemCount: summary.itemCount,
-                        isHighTicket: summary.isHighTicket,
-                        discountStandard: summary.discountStandard,
-                        discountModelat: summary.discountModelat
-                    },
-                    payment: paymentData ? {
-                        method: paymentData.method,
-                        installments: paymentData.installments,
-                        total: paymentData.total,
-                        discount: paymentData.discount
-                    } : null
+                if (!orderId || !paymentCompleted) {
+                    navigate('/')
+                    return
                 }
 
-                // Save to API
-                await api.post('/orders', {
-                    details: orderData,
-                    total: paymentData ? paymentData.total : summary.totalWithDiscount,
-                    status: 'pending',
-                    address_id: selectedAddressId || null,
-                    payment_method: paymentData?.method || null,
-                    installments: paymentData?.installments || null,
-                    pix_discount: paymentData?.discount || null
-                })
+                // Buscar dados do pedido
+                const { data } = await api.get(`/orders/${orderId}`)
+                setOrder(data)
 
-                clearCart()
-                localStorage.removeItem('selectedAddressId')
-                localStorage.removeItem('paymentData')
-                setStatus('success')
-                setMessage('Pedido realizado com sucesso!')
-
+                // Limpar flags do localStorage
+                localStorage.removeItem('paymentCompleted')
+                localStorage.removeItem('pendingOrderId')
             } catch (err) {
-                setStatus('error')
-                setMessage('Erro ao processar pedido: ' + err.message)
+                console.error('Erro ao carregar pedido:', err)
+            } finally {
+                setLoading(false)
             }
         }
 
-        processOrder()
-    }, []) // Empty dependency array, run once on mount
+        loadOrder()
+    }, [])
+
+    const formatCurrency = (value) => {
+        const num = parseFloat(value)
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(isNaN(num) ? 0 : num)
+    }
+
+    if (loading) {
+        return (
+            <div className="min-h-[60vh] flex items-center justify-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-[60vh] flex flex-col items-center justify-center text-center p-4">
-            {status === 'processing' && (
-                <>
-                    <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
-                    <h2 className="text-2xl font-bold text-slate-800 mb-2">Processando...</h2>
-                    <p className="text-slate-500">{message}</p>
-                </>
+            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 animate-bounce">
+                <CheckCircle size={40} />
+            </div>
+
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">Pedido Confirmado!</h2>
+            <p className="text-slate-600 max-w-md mx-auto mb-6">
+                Seu pedido foi recebido e esta sendo processado.
+            </p>
+
+            {order && (
+                <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm mb-6 text-left">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                            <ShoppingBag className="w-5 h-5 text-green-600" />
+                        </div>
+                        <div>
+                            <p className="text-sm font-medium text-slate-800">Pedido</p>
+                            <p className="text-xs text-slate-500 font-mono">
+                                {order.order_number || `#${String(order.id).slice(0, 8)}`}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Status</span>
+                            <span className="font-medium text-green-600 capitalize">
+                                {order.status === 'paid' ? 'Pago' : order.status === 'pending' ? 'Pendente' : order.status}
+                            </span>
+                        </div>
+                        {order.payment_method && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-500">Pagamento</span>
+                                <span className="font-medium text-slate-800">
+                                    {order.payment_method === 'credit_card' ? 'Cartao de Credito' : order.payment_method === 'pix' ? 'PIX' : order.payment_method}
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex justify-between pt-2 border-t border-slate-100">
+                            <span className="text-slate-500">Total</span>
+                            <span className="font-bold text-slate-900">{formatCurrency(order.total)}</span>
+                        </div>
+                    </div>
+
+                    {order.tracking_url && (
+                        <a
+                            href={order.tracking_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-4 flex items-center justify-center gap-2 text-sm text-primary hover:text-primary-dark font-medium"
+                        >
+                            <ExternalLink size={14} />
+                            Acompanhar Pedido
+                        </a>
+                    )}
+                </div>
             )}
 
-            {status === 'success' && (
-                <>
-                    <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-                        <CheckCircle size={40} />
-                    </div>
-                    <h2 className="text-3xl font-bold text-slate-900 mb-2">Parabéns!</h2>
-                    <p className="text-slate-600 max-w-md mx-auto mb-8">
-                        Seu pedido foi recebido e está sendo processado pela nossa equipe.
-                        Você receberá os detalhes em breve.
-                    </p>
-                    <Link
-                        to="/"
-                        className="bg-primary hover:bg-primary-dark text-white px-8 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
-                    >
-                        <ArrowLeft size={20} /> Voltar para Loja
-                    </Link>
-                </>
-            )}
-
-            {status === 'error' && (
-                <>
-                    <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-6">
-                        <span className="text-3xl font-bold">!</span>
-                    </div>
-                    <h2 className="text-2xl font-bold text-slate-900 mb-2">Ops! Algo deu errado.</h2>
-                    <p className="text-slate-600 max-w-md mx-auto mb-8">
-                        {message}
-                    </p>
-                    <Link
-                        to="/"
-                        className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-3 rounded-lg font-semibold transition-colors flex items-center gap-2"
-                    >
-                        <ArrowLeft size={20} /> Tentar Novamente
-                    </Link>
-                </>
-            )}
+            <div className="flex flex-col gap-3 w-full max-w-sm">
+                <Link
+                    to="/profile?tab=orders"
+                    className="w-full bg-primary hover:bg-primary-dark text-white px-8 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                    <Package size={20} /> Ver Meus Pedidos
+                </Link>
+                <Link
+                    to="/"
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 px-8 py-3 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+                >
+                    <ArrowLeft size={20} /> Continuar Comprando
+                </Link>
+            </div>
         </div>
     )
 }

@@ -8,7 +8,7 @@ const GATEWAY_LABELS = {
     stripe: 'Stripe'
 }
 
-export default function CreditCardForm({ amount, onSubmit, loading, gatewayType, publicKey }) {
+export default function CreditCardForm({ amount, onSubmit, loading, gatewayType, publicKey, customer }) {
     const [formData, setFormData] = useState({
         number: '',
         holder: '',
@@ -154,7 +154,7 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
                     cardExpirationYear: '20' + expiryYear.trim(),
                     securityCode: formData.cvv,
                     identificationType: 'CPF',
-                    identificationNumber: ''
+                    identificationNumber: (customer?.cpf || '').replace(/\D/g, '')
                 })
 
                 onSubmit({

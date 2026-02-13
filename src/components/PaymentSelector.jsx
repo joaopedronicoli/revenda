@@ -165,6 +165,7 @@ export default function PaymentSelector({ total, customer, orderId, onPaymentSuc
                         loading={loading}
                         gatewayType={gatewayInfo?.gatewayForCreditCard?.type}
                         publicKey={gatewayInfo?.gatewayForCreditCard?.publicKey}
+                        customer={customer}
                     />
                 )}
 

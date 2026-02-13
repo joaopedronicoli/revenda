@@ -421,25 +421,47 @@ async function createOrUpdateWCOrder(orderId) {
         line_items: lineItems,
         fee_lines: feeLines.length > 0 ? feeLines : undefined,
         shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
-        meta_data: [
-            { key: '_revenda_app_order_id', value: String(order.id) },
-            { key: '_payment_method_title', value: paymentMethodLabel },
-            { key: '_billing_number', value: order.addr_number || '' },
-            { key: '_billing_neighborhood', value: order.neighborhood || '' },
-            { key: '_billing_cpf', value: userCpf },
-            { key: '_billing_cnpj', value: userData.cnpj || '' },
-            { key: '_billing_cellphone', value: userPhone },
-            { key: '_billing_persontype', value: userData.document_type === 'cnpj' ? '2' : '1' },
-            { key: 'pe_channel', value: 'revenda' },
-            { key: 'pe_landing', value: 'central-revendas' },
-            { key: 'pe_referrer', value: 'central-revendas' },
-            { key: '_utm_source', value: 'revenda' },
-            { key: '_utm_medium', value: 'app' },
-            { key: '_utm_campaign', value: 'central-revendas' },
-            { key: '_billing_company', value: billingCompanyName },
-            { key: '_shipping_number', value: order.addr_number || '' },
-            { key: '_shipping_neighborhood', value: order.neighborhood || '' }
-        ]
+        meta_data: (() => {
+            const baseMeta = [
+                { key: '_revenda_app_order_id', value: String(order.id) },
+                { key: '_payment_method_title', value: paymentMethodLabel },
+                { key: '_billing_number', value: order.addr_number || '' },
+                { key: '_billing_neighborhood', value: order.neighborhood || '' },
+                { key: '_billing_cpf', value: userCpf },
+                { key: '_billing_cnpj', value: userData.cnpj || '' },
+                { key: '_billing_cellphone', value: userPhone },
+                { key: '_billing_persontype', value: userData.document_type === 'cnpj' ? '2' : '1' },
+                { key: '_billing_company', value: billingCompanyName },
+                { key: '_shipping_number', value: order.addr_number || '' },
+                { key: '_shipping_neighborhood', value: order.neighborhood || '' }
+            ];
+
+            // UTM tracking data from order
+            const tracking = order.tracking_data || {};
+            const trackingKeys = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
+                'gclid','gbraid','wbraid','fbclid','ttclid','msclkid','yclid','srctid',
+                'pe_landing','pe_referrer','pe_channel'];
+
+            let hasTrackingData = false;
+            trackingKeys.forEach(key => {
+                if (tracking[key]) {
+                    baseMeta.push({ key: `_pe_${key}`, value: tracking[key] });
+                    hasTrackingData = true;
+                }
+            });
+
+            // Fallback: if no tracking data, use default revenda values
+            if (!hasTrackingData) {
+                baseMeta.push({ key: 'pe_channel', value: 'revenda' });
+                baseMeta.push({ key: 'pe_landing', value: 'central-revendas' });
+                baseMeta.push({ key: 'pe_referrer', value: 'central-revendas' });
+                baseMeta.push({ key: '_utm_source', value: 'revenda' });
+                baseMeta.push({ key: '_utm_medium', value: 'app' });
+                baseMeta.push({ key: '_utm_campaign', value: 'central-revendas' });
+            }
+
+            return baseMeta;
+        })()
     };
 
     if (lineItems.length === 0) {
@@ -1820,7 +1842,7 @@ app.get('/orders/:id', authenticateToken, async (req, res) => {
 });
 
 app.post('/orders', authenticateToken, async (req, res) => {
-    const { order_number, details, payment_method, installments, total, address_id, kit_id, commission_credit } = req.body;
+    const { order_number, details, payment_method, installments, total, address_id, kit_id, commission_credit, tracking_data } = req.body;
 
     try {
         // Buscar dados completos do usuario
@@ -1890,9 +1912,9 @@ app.post('/orders', authenticateToken, async (req, res) => {
         const tempOrderNumber = order_number || `TEMP-${Date.now()}`;
 
         const { rows } = await db.query(
-            `INSERT INTO orders (user_id, order_number, details, payment_method, installments, total, address_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [req.user.id, tempOrderNumber, JSON.stringify(enrichedDetails), payment_method, installments || 1, finalTotal, address_id]
+            `INSERT INTO orders (user_id, order_number, details, payment_method, installments, total, address_id, tracking_data)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [req.user.id, tempOrderNumber, JSON.stringify(enrichedDetails), payment_method, installments || 1, finalTotal, address_id, tracking_data ? JSON.stringify(tracking_data) : null]
         );
 
         const newOrder = rows[0];
@@ -2464,7 +2486,7 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
         const weekAgo = new Date(now); weekAgo.setDate(weekAgo.getDate() - 7);
         const monthAgo = new Date(now); monthAgo.setDate(monthAgo.getDate() - 30);
 
-        const [salesResult, ordersResult, usersResult, abandonedResult, levelStats, recentOrdersResult, salesChartResult, topCustomersResult, crmResult] = await Promise.all([
+        const [salesResult, ordersResult, usersResult, abandonedResult, levelStats, recentOrdersResult, salesChartResult, topCustomersResult, crmResult, channelResult] = await Promise.all([
             // Sales: today, week, month, total
             db.query(`
                 SELECT
@@ -2540,7 +2562,19 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
                     (SELECT COUNT(*) FROM (SELECT user_id FROM orders WHERE status IN ('paid', 'shipped', 'delivered') GROUP BY user_id HAVING COUNT(*) >= 2) sub) as repeat_customers,
                     COALESCE((SELECT AVG(user_total) FROM (SELECT SUM(total::numeric) as user_total FROM orders WHERE status IN ('paid', 'shipped', 'delivered') GROUP BY user_id) sub2), 0) as ltv
                 FROM orders WHERE status IN ('paid', 'shipped', 'delivered')
-            `)
+            `),
+
+            // Channel distribution (UTM tracking)
+            db.query(`
+                SELECT
+                    COALESCE(tracking_data->>'pe_channel', 'direct') as channel,
+                    COUNT(*) as orders,
+                    COALESCE(SUM(total::numeric), 0) as revenue
+                FROM orders
+                WHERE status IN ('paid', 'shipped', 'delivered')
+                GROUP BY channel
+                ORDER BY revenue DESC
+            `).catch(() => ({ rows: [] }))
         ]);
 
         // Process orders by status
@@ -2565,6 +2599,13 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
         const crmRow = crmResult.rows[0] || {};
         const approvedUsers = parseInt(crmRow.approved_users) || 1;
         const buyers = parseInt(crmRow.buyers) || 0;
+
+        // Process channel distribution
+        const channelDistribution = (channelResult.rows || []).map(r => ({
+            channel: r.channel,
+            orders: parseInt(r.orders),
+            revenue: parseFloat(r.revenue)
+        }));
 
         res.json({
             sales: {
@@ -2591,6 +2632,7 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
                 lifetimeValue: parseFloat(crmRow.ltv) || 0
             },
             levelDistribution,
+            channelDistribution,
             recentOrders: recentOrdersResult.rows,
             salesChart,
             topCustomers: topCustomersResult.rows
@@ -3008,7 +3050,7 @@ app.post('/admin/indicadores/add-existing', authenticateToken, requireAdmin, asy
 
 app.get('/admin/orders', authenticateToken, requireAdmin, async (req, res) => {
     try {
-        const { page = 1, limit = 20, status, search } = req.query;
+        const { page = 1, limit = 20, status, search, channel } = req.query;
         const offset = (Number(page) - 1) * Number(limit);
 
         let whereConditions = [];
@@ -3025,6 +3067,12 @@ app.get('/admin/orders', authenticateToken, requireAdmin, async (req, res) => {
             paramCount++;
             whereConditions.push(`(u.name ILIKE $${paramCount} OR u.email ILIKE $${paramCount} OR o.order_number ILIKE $${paramCount})`);
             queryParams.push(`%${search}%`);
+        }
+
+        if (channel) {
+            paramCount++;
+            whereConditions.push(`o.tracking_data->>'pe_channel' = $${paramCount}`);
+            queryParams.push(channel);
         }
 
         const whereClause = whereConditions.length > 0 ? 'WHERE ' + whereConditions.join(' AND ') : '';

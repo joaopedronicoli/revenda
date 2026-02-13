@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react'
-import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle, FileText, ExternalLink } from 'lucide-react'
+import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle, FileText, ExternalLink, Globe } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
+
+const channelConfig = {
+    paid_google: { label: 'Google Ads', color: 'bg-green-100 text-green-800' },
+    paid_social: { label: 'Meta/TikTok Ads', color: 'bg-purple-100 text-purple-800' },
+    paid_microsoft: { label: 'Microsoft Ads', color: 'bg-teal-100 text-teal-800' },
+    organic_google: { label: 'Google Organico', color: 'bg-blue-100 text-blue-800' },
+    organic: { label: 'Organico', color: 'bg-sky-100 text-sky-800' },
+    organic_social: { label: 'Social Organico', color: 'bg-pink-100 text-pink-800' },
+    email: { label: 'Email', color: 'bg-orange-100 text-orange-800' },
+    referral: { label: 'Referral', color: 'bg-yellow-100 text-yellow-800' },
+    direct: { label: 'Direto', color: 'bg-slate-100 text-slate-800' },
+    revenda: { label: 'Revenda', color: 'bg-indigo-100 text-indigo-800' }
+}
 
 const statusConfig = {
     pending: { label: 'Pendente', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -23,6 +36,7 @@ export default function OrdersManagement() {
     const [orders, setOrders] = useState([])
     const [loading, setLoading] = useState(true)
     const [filter, setFilter] = useState('all')
+    const [channelFilter, setChannelFilter] = useState('')
     const [search, setSearch] = useState('')
     const [selectedOrder, setSelectedOrder] = useState(null)
     const [trackingCode, setTrackingCode] = useState('')
@@ -30,7 +44,7 @@ export default function OrdersManagement() {
 
     useEffect(() => {
         loadOrders()
-    }, [filter])
+    }, [filter, channelFilter])
 
     const loadOrders = async () => {
         setLoading(true)
@@ -38,6 +52,9 @@ export default function OrdersManagement() {
             const params = {}
             if (filter !== 'all') {
                 params.status = filter
+            }
+            if (channelFilter) {
+                params.channel = channelFilter
             }
 
             const { data } = await api.get('/admin/orders', { params })
@@ -112,7 +129,7 @@ export default function OrdersManagement() {
                         />
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     {['all', 'pending', 'paid', 'shipped', 'delivered'].map((status) => (
                         <button
                             key={status}
@@ -125,6 +142,16 @@ export default function OrdersManagement() {
                             {status === 'all' ? 'Todos' : statusConfig[status]?.label}
                         </button>
                     ))}
+                    <select
+                        value={channelFilter}
+                        onChange={(e) => setChannelFilter(e.target.value)}
+                        className="px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary"
+                    >
+                        <option value="">Todos os Canais</option>
+                        {Object.entries(channelConfig).map(([key, cfg]) => (
+                            <option key={key} value={key}>{cfg.label}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -149,6 +176,7 @@ export default function OrdersManagement() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pagamento</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Canal</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
                                 </tr>
@@ -192,6 +220,19 @@ export default function OrdersManagement() {
                                             <td className="px-6 py-4 text-sm text-slate-500 capitalize">
                                                 {order.payment_method === 'pix' ? 'PIX' : 'Cartão'}
                                                 {order.installments > 1 && ` (${order.installments}x)`}
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {(() => {
+                                                    const ch = order.tracking_data?.pe_channel || null
+                                                    const cfg = ch ? channelConfig[ch] : null
+                                                    return cfg ? (
+                                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
+                                                            {cfg.label}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400">-</span>
+                                                    )
+                                                })()}
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
@@ -272,6 +313,61 @@ export default function OrdersManagement() {
                                         {selectedOrder.addresses.neighborhood}, {selectedOrder.addresses.city} - {selectedOrder.addresses.state}
                                     </p>
                                     <p className="text-sm text-slate-500">CEP: {selectedOrder.addresses.cep}</p>
+                                </div>
+                            )}
+
+                            {/* Origem / Tracking */}
+                            {selectedOrder.tracking_data && Object.keys(selectedOrder.tracking_data).length > 0 && (
+                                <div>
+                                    <h3 className="text-sm font-medium text-slate-500 mb-2 flex items-center gap-1">
+                                        <Globe size={14} /> Origem do Pedido
+                                    </h3>
+                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
+                                        {selectedOrder.tracking_data.pe_channel && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Canal</span>
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${(channelConfig[selectedOrder.tracking_data.pe_channel] || channelConfig.direct).color}`}>
+                                                    {(channelConfig[selectedOrder.tracking_data.pe_channel] || { label: selectedOrder.tracking_data.pe_channel }).label}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.tracking_data.utm_source && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Fonte / Meio</span>
+                                                <span className="font-medium">{selectedOrder.tracking_data.utm_source}{selectedOrder.tracking_data.utm_medium ? ` / ${selectedOrder.tracking_data.utm_medium}` : ''}</span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.tracking_data.utm_campaign && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Campanha</span>
+                                                <span className="font-medium">{selectedOrder.tracking_data.utm_campaign}</span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.tracking_data.pe_landing && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Landing Page</span>
+                                                <span className="font-medium text-xs max-w-[280px] truncate" title={selectedOrder.tracking_data.pe_landing}>
+                                                    {selectedOrder.tracking_data.pe_landing}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.tracking_data.pe_referrer && selectedOrder.tracking_data.pe_referrer !== 'direct' && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Referrer</span>
+                                                <span className="font-medium text-xs max-w-[280px] truncate" title={selectedOrder.tracking_data.pe_referrer}>
+                                                    {selectedOrder.tracking_data.pe_referrer}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {(selectedOrder.tracking_data.gclid || selectedOrder.tracking_data.fbclid || selectedOrder.tracking_data.ttclid) && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Click ID</span>
+                                                <span className="font-medium text-xs">
+                                                    {selectedOrder.tracking_data.gclid ? 'gclid' : selectedOrder.tracking_data.fbclid ? 'fbclid' : 'ttclid'}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

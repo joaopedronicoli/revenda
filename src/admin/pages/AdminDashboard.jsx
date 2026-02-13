@@ -14,7 +14,8 @@ import {
     Star,
     Calendar,
     BarChart3,
-    Download
+    Download,
+    Globe
 } from 'lucide-react'
 import {
     LineChart,
@@ -26,7 +27,9 @@ import {
     ResponsiveContainer,
     PieChart,
     Pie,
-    Cell
+    Cell,
+    BarChart,
+    Bar
 } from 'recharts'
 import api from '../../services/api'
 
@@ -75,6 +78,32 @@ const formatCurrency = (value) => {
 // Chart colors
 const COLORS = ['#f59e0b', '#22c55e', '#3b82f6', '#8b5cf6']
 
+const CHANNEL_COLORS = {
+    paid_google: '#22c55e',
+    paid_social: '#8b5cf6',
+    paid_microsoft: '#14b8a6',
+    organic_google: '#3b82f6',
+    organic: '#0ea5e9',
+    organic_social: '#ec4899',
+    email: '#f97316',
+    referral: '#eab308',
+    direct: '#94a3b8',
+    revenda: '#6366f1'
+}
+
+const CHANNEL_LABELS = {
+    paid_google: 'Google Ads',
+    paid_social: 'Meta/TikTok Ads',
+    paid_microsoft: 'Microsoft Ads',
+    organic_google: 'Google Organico',
+    organic: 'Organico',
+    organic_social: 'Social Organico',
+    email: 'Email',
+    referral: 'Referral',
+    direct: 'Direto',
+    revenda: 'Revenda'
+}
+
 export default function AdminDashboard() {
     const [loading, setLoading] = useState(true)
     const [dateRange, setDateRange] = useState('month') // today, week, month, 90days, year, all, custom
@@ -92,6 +121,7 @@ export default function AdminDashboard() {
     const [recentOrders, setRecentOrders] = useState([])
     const [salesChart, setSalesChart] = useState([])
     const [topCustomers, setTopCustomers] = useState([])
+    const [channelDistribution, setChannelDistribution] = useState([])
 
     useEffect(() => {
         loadDashboardData()
@@ -116,6 +146,7 @@ export default function AdminDashboard() {
                 abandonedCarts = { count: 0, value: 0 },
                 crm = { avgTicket: 0, conversionRate: 0, repeatCustomers: 0, lifetimeValue: 0 },
                 levelDistribution = { bronze: 0, prata: 0, ouro: 0 },
+                channelDistribution: channelDist = [],
                 recentOrders: recent = [],
                 salesChart: chart = [],
                 topCustomers: topCust = []
@@ -133,6 +164,11 @@ export default function AdminDashboard() {
             setRecentOrders(recent)
             setSalesChart(chart)
             setTopCustomers(topCust)
+            setChannelDistribution(channelDist.map(c => ({
+                ...c,
+                name: CHANNEL_LABELS[c.channel] || c.channel,
+                fill: CHANNEL_COLORS[c.channel] || '#94a3b8'
+            })))
 
         } catch (err) {
             console.error('Error loading dashboard:', err)
@@ -439,6 +475,61 @@ export default function AdminDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Traffic Sources */}
+            {channelDistribution.length > 0 && (
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Globe className="w-5 h-5 text-primary" />
+                        <h3 className="text-lg font-semibold text-slate-900">Fontes de Trafego</h3>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div>
+                            <ResponsiveContainer width="100%" height={280}>
+                                <BarChart data={channelDistribution} layout="vertical" margin={{ left: 20 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                                    <XAxis type="number" stroke="#64748b" fontSize={12} tickFormatter={(v) => `R$${v}`} />
+                                    <YAxis type="category" dataKey="name" stroke="#64748b" fontSize={11} width={120} />
+                                    <Tooltip
+                                        formatter={(value, name) => [name === 'revenue' ? formatCurrency(value) : value, name === 'revenue' ? 'Receita' : 'Pedidos']}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                                    />
+                                    <Bar dataKey="revenue" name="Receita" radius={[0, 4, 4, 0]}>
+                                        {channelDistribution.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                        <div>
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="py-2 text-left text-xs font-medium text-slate-500 uppercase">Canal</th>
+                                        <th className="py-2 text-right text-xs font-medium text-slate-500 uppercase">Pedidos</th>
+                                        <th className="py-2 text-right text-xs font-medium text-slate-500 uppercase">Receita</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {channelDistribution.map((ch) => (
+                                        <tr key={ch.channel} className="border-b border-slate-100">
+                                            <td className="py-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ch.fill }} />
+                                                    <span className="font-medium text-slate-900">{ch.name}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-2 text-right text-slate-600">{ch.orders}</td>
+                                            <td className="py-2 text-right font-medium text-slate-900">{formatCurrency(ch.revenue)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Alerts */}
             {metrics.users.pending > 0 && (

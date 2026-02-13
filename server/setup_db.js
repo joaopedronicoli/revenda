@@ -565,6 +565,10 @@ const updateSchema = async () => {
     `);
     console.log('Tabela "payment_gateways" verificada/criada com sucesso.');
 
+    // Coluna de tracking UTM
+    try { await db.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_data JSONB"); } catch (e) { /* already exists */ }
+    console.log('Coluna tracking_data adicionada em "orders".');
+
     // Novas colunas em orders para gateway multi-CNPJ
     const gatewayOrderColumns = [
       { name: 'billing_company_id', sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS billing_company_id INTEGER REFERENCES billing_companies(id)" },

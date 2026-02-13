@@ -1,6 +1,8 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { initTracking } from './utils/tracking'
 import Register from './pages/Register'
 import Login from './pages/Login'
 import ResetPassword from './pages/ResetPassword'
@@ -54,6 +56,8 @@ const ProtectedRoute = ({ children, allowPending = false, allowUnverified = fals
 }
 
 export default function App() {
+  useEffect(() => { initTracking() }, [])
+
   return (
     <ThemeProvider>
       <AuthProvider>

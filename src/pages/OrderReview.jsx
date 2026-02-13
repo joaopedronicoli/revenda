@@ -8,6 +8,7 @@ import { MapPin, Edit2, Plus, Package, Truck, AlertCircle, X, Clock, Wallet, Gif
 import PaymentSelector from '../components/PaymentSelector'
 import { getDeliveryEstimate, getEstimatedDeliveryDate } from '../lib/deliveryEstimates'
 import KitSelector from '../components/KitSelector'
+import { getTrackingData } from '../utils/tracking'
 
 export default function OrderReview() {
     const navigate = useNavigate()
@@ -151,7 +152,8 @@ export default function OrderReview() {
                     status: 'pending',
                     address_id: selectedAddr.id,
                     kit_id: selectedKit?.id || null,
-                    commission_credit: summary.appliedCredit || 0
+                    commission_credit: summary.appliedCredit || 0,
+                    tracking_data: getTrackingData()
                 }
 
                 const { data: order } = await api.post('/orders', orderData)
@@ -227,7 +229,8 @@ export default function OrderReview() {
                 status: 'pending',
                 address_id: selectedAddress.id,
                 kit_id: selectedKit?.id || null,
-                commission_credit: summary.appliedCredit || 0
+                commission_credit: summary.appliedCredit || 0,
+                tracking_data: getTrackingData()
             }
 
             const { data: order } = await api.post('/orders', orderData)

@@ -1564,9 +1564,9 @@ app.post('/orders', authenticateToken, async (req, res) => {
     const { order_number, details, payment_method, installments, total, address_id, kit_id, commission_credit } = req.body;
 
     try {
-        // Buscar status do usuario
+        // Buscar dados completos do usuario
         const { rows: userRows } = await db.query(
-            'SELECT first_order_completed, has_purchased_kit, commission_balance, role FROM users WHERE id = $1',
+            'SELECT first_order_completed, has_purchased_kit, commission_balance, role, name, email, telefone, cpf, cnpj, document_type FROM users WHERE id = $1',
             [req.user.id]
         );
         const userStatus = userRows[0];
@@ -1655,29 +1655,54 @@ app.post('/orders', authenticateToken, async (req, res) => {
                 .map(item => ({
                     product_id: item.woo_product_id,
                     quantity: item.quantity,
-                    price: (item.tablePrice || item.price || 0).toString()
+                    total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
+                    subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
                 }));
+
+            // Resolver empresa faturadora pelo estado do endereco
+            let billingCompanyName = '';
+            try {
+                if (addressData.state) {
+                    const resolved = await billingService.resolveForState(addressData.state);
+                    if (resolved) billingCompanyName = resolved.billingCompanyName || '';
+                }
+            } catch (e) { /* ignora */ }
+
+            const userName = userStatus.name || enrichedDetails.user_name || 'Cliente';
+            const nameParts = userName.trim().split(' ');
+            const firstName = nameParts[0] || 'Cliente';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            const userPhone = userStatus.telefone || enrichedDetails.user_whatsapp || '';
+            const userCpf = userStatus.cpf || enrichedDetails.user_cpf || '';
+            const userEmail = userStatus.email || enrichedDetails.user_email || '';
+
+            // Montar nota do pedido
+            const orderNotes = [
+                'Pedido realizado pela Central de Revendas.',
+                `Metodo de pagamento: ${payment_method === 'pix' ? 'PIX' : payment_method === 'credit_card' ? 'Cartao de Credito' : payment_method || 'Nao informado'}.`,
+                billingCompanyName ? `Empresa faturadora: ${billingCompanyName}.` : ''
+            ].filter(Boolean).join('\n');
 
             // Sempre criar pedido no WC, usando fee_lines como fallback se nao houver line_items
             const wcOrderData = {
                 status: 'pending',
                 billing: {
-                    first_name: enrichedDetails.user_name || 'Cliente',
-                    last_name: '',
-                    email: enrichedDetails.user_email || '',
-                    phone: enrichedDetails.user_whatsapp || '',
-                    address_1: addressData.street || '',
-                    address_2: addressData.complement || '',
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: userEmail,
+                    phone: userPhone,
+                    address_1: `${addressData.street || ''}${addressData.number ? ', ' + addressData.number : ''}`,
+                    address_2: [addressData.complement, addressData.neighborhood].filter(Boolean).join(' - '),
                     city: addressData.city || '',
                     state: addressData.state || '',
                     postcode: addressData.cep || '',
                     country: 'BR'
                 },
                 shipping: {
-                    first_name: enrichedDetails.user_name || 'Cliente',
-                    last_name: '',
-                    address_1: addressData.street || '',
-                    address_2: addressData.complement || '',
+                    first_name: firstName,
+                    last_name: lastName,
+                    address_1: `${addressData.street || ''}${addressData.number ? ', ' + addressData.number : ''}`,
+                    address_2: [addressData.complement, addressData.neighborhood].filter(Boolean).join(' - '),
                     city: addressData.city || '',
                     state: addressData.state || '',
                     postcode: addressData.cep || '',
@@ -1685,14 +1710,24 @@ app.post('/orders', authenticateToken, async (req, res) => {
                 },
                 line_items: lineItems.length > 0 ? lineItems : [],
                 fee_lines: lineItems.length === 0 ? [{ name: 'Pedido Revenda App', total: finalTotal.toString() }] : [],
-                customer_note: `Pedido do App de Revenda: ${newOrder.id}`,
+                customer_note: orderNotes,
                 shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
                 meta_data: [
                     { key: '_revenda_app_order_id', value: String(newOrder.id) },
                     { key: '_payment_method_title', value: payment_method || 'Nao informado' },
                     { key: '_billing_number', value: addressData.number || '' },
                     { key: '_billing_neighborhood', value: addressData.neighborhood || '' },
-                    { key: '_billing_cpf', value: enrichedDetails.user_cpf || '' }
+                    { key: '_billing_cpf', value: userCpf },
+                    { key: '_billing_cnpj', value: userStatus.cnpj || '' },
+                    { key: '_billing_cellphone', value: userPhone },
+                    { key: '_billing_persontype', value: userStatus.document_type === 'cnpj' ? '2' : '1' },
+                    { key: 'pe_channel', value: 'revenda' },
+                    { key: 'pe_landing', value: 'central-revendas' },
+                    { key: 'pe_referrer', value: 'central-revendas' },
+                    { key: '_utm_source', value: 'revenda' },
+                    { key: '_utm_medium', value: 'app' },
+                    { key: '_utm_campaign', value: 'central-revendas' },
+                    { key: '_billing_company', value: billingCompanyName }
                 ]
             };
 
@@ -3001,52 +3036,94 @@ app.post('/woocommerce/create-order', authenticateToken, async (req, res) => {
         const order = rows[0];
         const details = order.details || {};
 
+        // Buscar dados completos do usuario
+        const { rows: userRows2 } = await db.query(
+            'SELECT name, email, telefone, cpf, cnpj, document_type FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        const userData = userRows2[0] || {};
+
         const lineItems = (details.items || [])
             .filter(item => item.woo_product_id)
             .map(item => ({
                 product_id: item.woo_product_id,
                 quantity: item.quantity,
-                price: (item.tablePrice || item.price || 0).toString()
+                total: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2),
+                subtotal: ((item.tablePrice || item.price || 0) * (item.quantity || 1)).toFixed(2)
             }));
 
         if (lineItems.length === 0) {
             return res.status(400).json({ error: 'Nenhum produto mapeado para WooCommerce' });
         }
 
+        // Resolver empresa faturadora
+        let billingCompanyName2 = '';
+        try {
+            if (order.state) {
+                const resolved = await billingService.resolveForState(order.state);
+                if (resolved) billingCompanyName2 = resolved.billingCompanyName || '';
+            }
+        } catch (e) { /* ignora */ }
+
+        const userName2 = userData.name || details.user_name || 'Cliente';
+        const nameParts2 = userName2.trim().split(' ');
+        const firstName2 = nameParts2[0] || 'Cliente';
+        const lastName2 = nameParts2.slice(1).join(' ') || '';
+        const userPhone2 = userData.telefone || details.user_whatsapp || '';
+        const userCpf2 = userData.cpf || details.user_cpf || '';
+        const userEmail2 = userData.email || details.user_email || '';
+
+        const paymentMethodLabel = order.payment_method === 'pix' ? 'PIX' : order.payment_method === 'credit_card' ? 'Cartao de Credito' : order.payment_method || 'Nao informado';
+        const orderNotes2 = [
+            'Pedido realizado pela Central de Revendas.',
+            `Metodo de pagamento: ${paymentMethodLabel}.`,
+            billingCompanyName2 ? `Empresa faturadora: ${billingCompanyName2}.` : ''
+        ].filter(Boolean).join('\n');
+
         const wcOrderData = {
             status: 'pending',
             billing: {
-                first_name: details.user_name || 'Cliente',
-                last_name: '',
-                email: details.user_email || req.user.email,
-                phone: details.user_whatsapp || '',
-                address_1: order.street || '',
-                address_2: order.complement || '',
+                first_name: firstName2,
+                last_name: lastName2,
+                email: userEmail2,
+                phone: userPhone2,
+                address_1: `${order.street || ''}${order.number ? ', ' + order.number : ''}`,
+                address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
                 city: order.city || '',
                 state: order.state || '',
                 postcode: order.cep || '',
                 country: 'BR'
             },
             shipping: {
-                first_name: details.user_name || 'Cliente',
-                last_name: '',
-                address_1: order.street || '',
-                address_2: order.complement || '',
+                first_name: firstName2,
+                last_name: lastName2,
+                address_1: `${order.street || ''}${order.number ? ', ' + order.number : ''}`,
+                address_2: [order.complement, order.neighborhood].filter(Boolean).join(' - '),
                 city: order.city || '',
                 state: order.state || '',
                 postcode: order.cep || '',
                 country: 'BR'
             },
             line_items: lineItems,
-            customer_note: `Pedido do App de Revenda: ${order.order_number}`,
+            customer_note: orderNotes2,
             shipping_lines: [{ method_id: 'free_shipping', method_title: 'Frete Gratis', total: '0.00' }],
             meta_data: [
                 { key: '_revenda_app_order_id', value: String(orderId) },
                 { key: '_revenda_app_order_number', value: order.order_number || '' },
-                { key: '_payment_method_title', value: order.payment_method || 'Nao informado' },
+                { key: '_payment_method_title', value: paymentMethodLabel },
                 { key: '_billing_number', value: order.number || '' },
                 { key: '_billing_neighborhood', value: order.neighborhood || '' },
-                { key: '_billing_cpf', value: details.user_cpf || '' }
+                { key: '_billing_cpf', value: userCpf2 },
+                { key: '_billing_cnpj', value: userData.cnpj || '' },
+                { key: '_billing_cellphone', value: userPhone2 },
+                { key: '_billing_persontype', value: userData.document_type === 'cnpj' ? '2' : '1' },
+                { key: 'pe_channel', value: 'revenda' },
+                { key: 'pe_landing', value: 'central-revendas' },
+                { key: 'pe_referrer', value: 'central-revendas' },
+                { key: '_utm_source', value: 'revenda' },
+                { key: '_utm_medium', value: 'app' },
+                { key: '_utm_campaign', value: 'central-revendas' },
+                { key: '_billing_company', value: billingCompanyName2 }
             ]
         };
 

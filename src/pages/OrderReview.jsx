@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useCartStore } from '../store/cartStore'
 import { getAddresses, getDefaultAddress } from '../lib/database'
@@ -11,6 +11,7 @@ import KitSelector from '../components/KitSelector'
 
 export default function OrderReview() {
     const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
     const { user, isProfileComplete } = useAuth()
     const { cart, getSummary, clearCart, selectedKit, setSelectedKit, commissionCredit, setCommissionCredit } = useCartStore()
     const [addresses, setAddresses] = useState([])
@@ -26,6 +27,8 @@ export default function OrderReview() {
     const [couponLoading, setCouponLoading] = useState(false)
     const [couponError, setCouponError] = useState('')
     const [gatewayInfo, setGatewayInfo] = useState(null)
+    const [resumeOrder, setResumeOrder] = useState(null)
+    const resumeOrderId = searchParams.get('resumeOrderId')
 
     const isFirstOrder = !user?.first_order_completed
     const userCommissionBalance = user?.commission_balance || 0
@@ -44,6 +47,27 @@ export default function OrderReview() {
             const defaultAddr = allAddresses.find(a => a.is_default)
             const selectedAddr = defaultAddr || allAddresses[0] || null
             setSelectedAddress(selectedAddr)
+
+            // Retomar pagamento de pedido existente (vindo do historico de pedidos)
+            if (resumeOrderId) {
+                try {
+                    const { data: existingOrder } = await api.get(`/orders/${resumeOrderId}`)
+                    if (existingOrder && existingOrder.status === 'pending') {
+                        setResumeOrder(existingOrder)
+                        setPaymentData({ orderId: resumeOrderId })
+                        setOrderNumber(existingOrder.order_number)
+                        setOrderCreated(true)
+                        localStorage.setItem('pendingOrderId', resumeOrderId)
+                        // Selecionar endereco do pedido
+                        const orderAddr = allAddresses.find(a => a.id === existingOrder.address_id)
+                        if (orderAddr) setSelectedAddress(orderAddr)
+                        setLoading(false)
+                        return
+                    }
+                } catch (err) {
+                    console.error('Erro ao carregar pedido para retomar:', err)
+                }
+            }
 
             // Verificar se ja existe um pedido pendente para evitar duplicacao
             const existingOrderId = localStorage.getItem('pendingOrderId')
@@ -216,7 +240,7 @@ export default function OrderReview() {
 
     // Auto-create order when kit is selected (first order) or immediately (recurring)
     useEffect(() => {
-        if (!orderCreated && selectedAddress && cart.length > 0 && !loading) {
+        if (!orderCreated && !resumeOrder && selectedAddress && cart.length > 0 && !loading) {
             if (isFirstOrder && selectedKit) {
                 createOrderWithKit()
             } else if (!isFirstOrder && !orderCreated) {
@@ -239,7 +263,7 @@ export default function OrderReview() {
         setCouponError('')
         setCouponResult(null)
         try {
-            const total = getSummary().totalWithDiscount
+            const total = resumeOrder ? parseFloat(resumeOrder.total) : getSummary().totalWithDiscount
             const { data } = await api.post('/coupons/validate', { code: couponCode, orderTotal: total })
             if (data.valid) {
                 setCouponResult(data)
@@ -265,7 +289,7 @@ export default function OrderReview() {
     const removeCoupon = async () => {
         // Reverter total do pedido
         if (paymentData?.orderId) {
-            const total = getSummary().totalWithDiscount
+            const total = resumeOrder ? parseFloat(resumeOrder.total) : getSummary().totalWithDiscount
             await api.put(`/orders/${paymentData.orderId}`, {
                 total,
                 coupon_code: null,
@@ -281,7 +305,9 @@ export default function OrderReview() {
         localStorage.setItem('lastOrderId', paymentData.orderId)
         localStorage.setItem('paymentCompleted', 'true')
         localStorage.removeItem('pendingOrderId')
-        clearCart()
+        if (!resumeOrder) {
+            clearCart()
+        }
         navigate('/confirmation')
     }
 
@@ -289,7 +315,19 @@ export default function OrderReview() {
         setError(errorMessage)
     }
 
-    const summary = getSummary()
+    // Dados para exibicao: do pedido retomado ou do carrinho atual
+    const displayItems = resumeOrder ? (resumeOrder.details?.items || []) : cart
+    const displayKit = resumeOrder ? resumeOrder.details?.kit : selectedKit
+    const resumeSummary = resumeOrder?.details?.summary
+    const summary = resumeOrder ? {
+        totalTable: resumeSummary?.totalTable || parseFloat(resumeOrder.total),
+        totalWithDiscount: parseFloat(resumeOrder.total),
+        productTotal: resumeSummary?.productTotal || parseFloat(resumeOrder.total),
+        kitPrice: resumeSummary?.kitPrice || 0,
+        appliedCredit: resumeSummary?.appliedCredit || 0,
+        itemCount: resumeSummary?.itemCount || displayItems.reduce((a, i) => a + (i.quantity || 1), 0),
+        discountStandard: resumeSummary?.discountStandard || 0.30,
+    } : getSummary()
 
     const formatCurrency = (value) => {
         const num = parseFloat(value)
@@ -308,7 +346,8 @@ export default function OrderReview() {
     }
 
     // Verificar se carrinho esta vazio MAS nao e por causa de um pagamento completo
-    if (cart.length === 0) {
+    // Pular check se estamos retomando pagamento de um pedido existente
+    if (cart.length === 0 && !resumeOrder) {
         const paymentCompleted = localStorage.getItem('paymentCompleted')
         if (paymentCompleted === 'true') {
             localStorage.removeItem('paymentCompleted')
@@ -357,11 +396,15 @@ export default function OrderReview() {
             <div className="max-w-4xl mx-auto px-4">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">Revisar Pedido</h1>
+                    <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                        {resumeOrder ? 'Continuar Pagamento' : 'Revisar Pedido'}
+                    </h1>
                     <p className="text-slate-600">
-                        {orderNumber && !orderNumber.startsWith('TEMP-')
-                            ? <>Pedido <strong>#{orderNumber}</strong> — Confira os detalhes antes de finalizar</>
-                            : 'Confira os detalhes antes de finalizar'
+                        {resumeOrder
+                            ? <>Pedido <strong>#{orderNumber}</strong> — Finalize o pagamento do seu pedido</>
+                            : orderNumber && !orderNumber.startsWith('TEMP-')
+                                ? <>Pedido <strong>#{orderNumber}</strong> — Confira os detalhes antes de finalizar</>
+                                : 'Confira os detalhes antes de finalizar'
                         }
                     </p>
                 </div>
@@ -369,8 +412,8 @@ export default function OrderReview() {
                 <div className="grid lg:grid-cols-3 gap-6">
                     {/* Main Content */}
                     <div className="lg:col-span-2 space-y-6">
-                        {/* Kit Selector - First Order Only */}
-                        {isFirstOrder && (
+                        {/* Kit Selector - First Order Only (esconder ao retomar pagamento) */}
+                        {isFirstOrder && !resumeOrder && (
                             <div className="bg-white rounded-xl p-6 border border-slate-200">
                                 <KitSelector
                                     selectedKit={selectedKit}
@@ -534,8 +577,8 @@ export default function OrderReview() {
                             )}
                         </div>
 
-                        {/* Commission Credit Section */}
-                        {userCommissionBalance > 0 && (
+                        {/* Commission Credit Section (esconder ao retomar - ja aplicado na criacao) */}
+                        {userCommissionBalance > 0 && !resumeOrder && (
                             <div className="bg-white rounded-xl p-6 border border-slate-200">
                                 <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                                     <Wallet size={20} className="text-green-600" />
@@ -635,7 +678,7 @@ export default function OrderReview() {
                                 Itens do Pedido
                             </h2>
                             <div className="space-y-3">
-                                {cart.map(item => (
+                                {displayItems.map(item => (
                                     <div key={item.id} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
                                         <div>
                                             <p className="font-medium text-slate-900">{item.name}</p>
@@ -646,17 +689,17 @@ export default function OrderReview() {
                                         </p>
                                     </div>
                                 ))}
-                                {selectedKit && (
+                                {displayKit && (
                                     <div className="flex justify-between items-center py-2 border-t-2 border-primary/20">
                                         <div>
                                             <p className="font-medium text-primary flex items-center gap-1">
                                                 <Gift size={16} />
-                                                {selectedKit.name}
+                                                {displayKit.name}
                                             </p>
                                             <p className="text-sm text-slate-600">Kit Inicial</p>
                                         </div>
                                         <p className="font-semibold text-primary">
-                                            {formatCurrency(selectedKit.price)}
+                                            {formatCurrency(displayKit.price)}
                                         </p>
                                     </div>
                                 )}
@@ -742,10 +785,10 @@ export default function OrderReview() {
                             </div>
 
                             <button
-                                onClick={() => navigate('/')}
+                                onClick={() => navigate(resumeOrder ? '/profile?tab=orders' : '/')}
                                 className="w-full bg-slate-100 text-slate-700 py-3 rounded-lg font-semibold hover:bg-slate-200 transition-colors"
                             >
-                                Voltar ao Carrinho
+                                {resumeOrder ? 'Voltar aos Pedidos' : 'Voltar ao Carrinho'}
                             </button>
                         </div>
                     </div>

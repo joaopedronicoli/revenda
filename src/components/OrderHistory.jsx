@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { getOrders } from '../lib/database'
 import { useCartStore } from '../store/cartStore'
-import { Package, Clock, CheckCircle, Truck, AlertCircle, ShoppingCart, ExternalLink } from 'lucide-react'
+import { Package, Clock, CheckCircle, Truck, AlertCircle, ShoppingCart, ExternalLink, CreditCard } from 'lucide-react'
 import { getDeliveryEstimate, getEstimatedDeliveryDate } from '../lib/deliveryEstimates'
 
 export default function OrderHistory() {
@@ -361,8 +361,17 @@ export default function OrderHistory() {
                                     )
                                 }
 
-                                {/* Buy Again Button */}
-                                <div className="border-t border-slate-100 pt-4 mt-4">
+                                {/* Action Buttons */}
+                                <div className="border-t border-slate-100 pt-4 mt-4 space-y-2">
+                                    {order.status === 'pending' && (
+                                        <button
+                                            onClick={() => navigate(`/order-review?resumeOrderId=${order.id}`)}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                                        >
+                                            <CreditCard size={18} />
+                                            Continuar Pagamento
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => handleBuyAgain(order)}
                                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors"

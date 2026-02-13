@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle, FileText, ExternalLink, Globe } from 'lucide-react'
+import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle, FileText, ExternalLink, Globe, User, MapPin, CreditCard, Gift, Tag, Wallet, Copy, Hash } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 
@@ -258,159 +258,274 @@ export default function OrdersManagement() {
             </div>
 
             {/* Order Detail Modal */}
-            {selectedOrder && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-slate-200">
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-slate-900">
-                                    Pedido {selectedOrder.order_number || `#${selectedOrder.id}`}
-                                </h2>
-                                <button
-                                    onClick={() => setSelectedOrder(null)}
-                                    className="text-slate-400 hover:text-slate-600"
-                                >
-                                    ✕
+            {selectedOrder && (() => {
+                const o = selectedOrder
+                const d = o.details || {}
+                const summary = d.summary || {}
+                const status = statusConfig[o.status] || statusConfig.pending
+                const StatusIcon = status.icon
+                const chCfg = o.tracking_data?.pe_channel ? (channelConfig[o.tracking_data.pe_channel] || channelConfig.direct) : null
+
+                return (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedOrder(null)}>
+                    <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <div className="flex items-center gap-3 mb-1">
+                                        <h2 className="text-xl font-bold text-slate-900">
+                                            Pedido {o.order_number || `#${o.id}`}
+                                        </h2>
+                                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
+                                            <StatusIcon className="w-3 h-3" />
+                                            {status.label}
+                                        </span>
+                                        {chCfg && (
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${chCfg.color}`}>
+                                                {chCfg.label}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-slate-500">
+                                        Criado em {new Date(o.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        {o.updated_at && o.updated_at !== o.created_at && (
+                                            <> — Atualizado em {new Date(o.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</>
+                                        )}
+                                    </p>
+                                </div>
+                                <button onClick={() => setSelectedOrder(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                                    <XCircle className="w-6 h-6" />
                                 </button>
                             </div>
                         </div>
 
                         <div className="p-6 space-y-6">
-                            {/* Cliente */}
-                            <div>
-                                <h3 className="text-sm font-medium text-slate-500 mb-2">Cliente</h3>
-                                <p className="font-medium">{selectedOrder.details?.user_name}</p>
-                                <p className="text-sm text-slate-500">{selectedOrder.details?.user_email}</p>
-                                <p className="text-sm text-slate-500">{selectedOrder.details?.user_whatsapp}</p>
+                            {/* IDs e Referências */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-slate-50 rounded-lg p-3">
+                                    <p className="text-xs text-slate-500 mb-0.5">ID Interno</p>
+                                    <p className="text-sm font-medium text-slate-900">{o.id}</p>
+                                </div>
+                                {o.woocommerce_order_id && (
+                                    <div className="bg-slate-50 rounded-lg p-3">
+                                        <p className="text-xs text-slate-500 mb-0.5">WooCommerce</p>
+                                        <p className="text-sm font-medium text-slate-900">#{o.woocommerce_order_number || o.woocommerce_order_id}</p>
+                                    </div>
+                                )}
+                                {o.bling_order_id && (
+                                    <div className="bg-slate-50 rounded-lg p-3">
+                                        <p className="text-xs text-slate-500 mb-0.5">Bling</p>
+                                        <p className="text-sm font-medium text-slate-900">{o.bling_order_id}</p>
+                                    </div>
+                                )}
+                                {o.gateway_transaction_id && (
+                                    <div className="bg-slate-50 rounded-lg p-3">
+                                        <p className="text-xs text-slate-500 mb-0.5">Gateway TX</p>
+                                        <p className="text-sm font-medium text-slate-900 text-xs truncate" title={o.gateway_transaction_id}>{o.gateway_transaction_id}</p>
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Itens */}
+                            {/* Cliente */}
                             <div>
-                                <h3 className="text-sm font-medium text-slate-500 mb-2">Itens</h3>
-                                <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-                                    {selectedOrder.details?.items?.map((item, idx) => (
-                                        <div key={idx} className="flex justify-between text-sm">
-                                            <span>{item.quantity}x {item.name}</span>
-                                            <span className="font-medium">{formatCurrency(item.tablePrice * item.quantity)}</span>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                    <User size={15} /> Cliente
+                                </h3>
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <span className="text-slate-500">Nome</span>
+                                            <p className="font-medium text-slate-900">{o.user_name || d.user_name || '-'}</p>
                                         </div>
-                                    ))}
-                                    <div className="border-t border-slate-200 pt-2 mt-2 flex justify-between font-medium">
-                                        <span>Total</span>
-                                        <span>{formatCurrency(selectedOrder.total)}</span>
+                                        <div>
+                                            <span className="text-slate-500">Email</span>
+                                            <p className="font-medium text-slate-900">{o.user_email || d.user_email || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500">WhatsApp</span>
+                                            <p className="font-medium text-slate-900">{o.user_phone || d.user_whatsapp || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500">User ID</span>
+                                            <p className="font-medium text-slate-900">{o.user_id}</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Endereço */}
-                            {selectedOrder.addresses && (
+                            {o.addr_street && (
                                 <div>
-                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Endereço de Entrega</h3>
-                                    <p className="text-sm">
-                                        {selectedOrder.addresses.street}, {selectedOrder.addresses.number}
-                                        {selectedOrder.addresses.complement && ` - ${selectedOrder.addresses.complement}`}
-                                    </p>
-                                    <p className="text-sm text-slate-500">
-                                        {selectedOrder.addresses.neighborhood}, {selectedOrder.addresses.city} - {selectedOrder.addresses.state}
-                                    </p>
-                                    <p className="text-sm text-slate-500">CEP: {selectedOrder.addresses.cep}</p>
-                                </div>
-                            )}
-
-                            {/* Origem / Tracking */}
-                            {selectedOrder.tracking_data && Object.keys(selectedOrder.tracking_data).length > 0 && (
-                                <div>
-                                    <h3 className="text-sm font-medium text-slate-500 mb-2 flex items-center gap-1">
-                                        <Globe size={14} /> Origem do Pedido
+                                    <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                        <MapPin size={15} /> Endereco de Entrega
                                     </h3>
-                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
-                                        {selectedOrder.tracking_data.pe_channel && (
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-slate-500">Canal</span>
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${(channelConfig[selectedOrder.tracking_data.pe_channel] || channelConfig.direct).color}`}>
-                                                    {(channelConfig[selectedOrder.tracking_data.pe_channel] || { label: selectedOrder.tracking_data.pe_channel }).label}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.tracking_data.utm_source && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Fonte / Meio</span>
-                                                <span className="font-medium">{selectedOrder.tracking_data.utm_source}{selectedOrder.tracking_data.utm_medium ? ` / ${selectedOrder.tracking_data.utm_medium}` : ''}</span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.tracking_data.utm_campaign && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Campanha</span>
-                                                <span className="font-medium">{selectedOrder.tracking_data.utm_campaign}</span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.tracking_data.pe_landing && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Landing Page</span>
-                                                <span className="font-medium text-xs max-w-[280px] truncate" title={selectedOrder.tracking_data.pe_landing}>
-                                                    {selectedOrder.tracking_data.pe_landing}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {selectedOrder.tracking_data.pe_referrer && selectedOrder.tracking_data.pe_referrer !== 'direct' && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Referrer</span>
-                                                <span className="font-medium text-xs max-w-[280px] truncate" title={selectedOrder.tracking_data.pe_referrer}>
-                                                    {selectedOrder.tracking_data.pe_referrer}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {(selectedOrder.tracking_data.gclid || selectedOrder.tracking_data.fbclid || selectedOrder.tracking_data.ttclid) && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Click ID</span>
-                                                <span className="font-medium text-xs">
-                                                    {selectedOrder.tracking_data.gclid ? 'gclid' : selectedOrder.tracking_data.fbclid ? 'fbclid' : 'ttclid'}
-                                                </span>
-                                            </div>
-                                        )}
+                                    <div className="bg-slate-50 rounded-lg p-4 text-sm">
+                                        {o.addr_nickname && <p className="font-medium text-slate-900 mb-1">{o.addr_nickname}</p>}
+                                        <p className="text-slate-700">
+                                            {o.addr_street}, {o.addr_number}
+                                            {o.addr_complement && ` - ${o.addr_complement}`}
+                                        </p>
+                                        <p className="text-slate-500">
+                                            {o.addr_neighborhood}, {o.addr_city} - {o.addr_state}
+                                        </p>
+                                        <p className="text-slate-500">CEP: {o.addr_cep}</p>
                                     </div>
                                 </div>
                             )}
 
-                            {/* Rastreio, Transportadora & NF */}
-                            {(selectedOrder.tracking_code || selectedOrder.carrier || selectedOrder.nota_fiscal_number || selectedOrder.bling_order_id) && (
-                                <div>
-                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Informacoes de Envio e NF</h3>
-                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
-                                        {selectedOrder.bling_order_id && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Bling Pedido ID</span>
-                                                <span className="font-medium">{selectedOrder.bling_order_id}</span>
+                            {/* Itens do Pedido */}
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                    <Package size={15} /> Itens do Pedido
+                                </h3>
+                                <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+                                    {d.items?.map((item, idx) => (
+                                        <div key={idx} className="flex justify-between items-center text-sm py-1">
+                                            <div className="flex-1">
+                                                <span className="font-medium text-slate-900">{item.quantity}x {item.name}</span>
+                                                {item.sku && <span className="text-xs text-slate-400 ml-2">SKU: {item.sku}</span>}
+                                            </div>
+                                            <span className="font-medium text-slate-900 ml-4">{formatCurrency((parseFloat(item.tablePrice) || 0) * (item.quantity || 1))}</span>
+                                        </div>
+                                    ))}
+
+                                    {/* Kit */}
+                                    {d.kit && (
+                                        <div className="flex justify-between items-center text-sm py-1 border-t border-slate-200 pt-2">
+                                            <span className="font-medium text-primary flex items-center gap-1">
+                                                <Gift size={14} /> {d.kit.name}
+                                            </span>
+                                            <span className="font-medium text-primary">{formatCurrency(d.kit.price || summary.kitPrice)}</span>
+                                        </div>
+                                    )}
+
+                                    {/* Resumo financeiro */}
+                                    <div className="border-t border-slate-300 pt-3 mt-2 space-y-1.5">
+                                        {summary.totalTable > 0 && (
+                                            <div className="flex justify-between text-sm text-slate-500">
+                                                <span>Subtotal (tabela)</span>
+                                                <span>{formatCurrency(summary.totalTable)}</span>
                                             </div>
                                         )}
-                                        {selectedOrder.carrier && (
+                                        {summary.totalTable > 0 && summary.productTotal > 0 && summary.totalTable > summary.productTotal && (
+                                            <div className="flex justify-between text-sm text-green-600">
+                                                <span>Desconto ({((parseFloat(summary.discountStandard) || 0.30) * 100).toFixed(0)}%)</span>
+                                                <span>-{formatCurrency(summary.totalTable - summary.productTotal)}</span>
+                                            </div>
+                                        )}
+                                        {summary.kitPrice > 0 && (
+                                            <div className="flex justify-between text-sm text-slate-500">
+                                                <span>Kit Inicial</span>
+                                                <span>{formatCurrency(summary.kitPrice)}</span>
+                                            </div>
+                                        )}
+                                        {d.commission_credit_applied > 0 && (
+                                            <div className="flex justify-between text-sm text-green-600">
+                                                <span className="flex items-center gap-1"><Wallet size={13} /> Credito Comissao</span>
+                                                <span>-{formatCurrency(d.commission_credit_applied)}</span>
+                                            </div>
+                                        )}
+                                        {d.coupon_code && parseFloat(d.coupon_discount || 0) > 0 && (
+                                            <div className="flex justify-between text-sm text-green-600">
+                                                <span className="flex items-center gap-1"><Tag size={13} /> Cupom {d.coupon_code}</span>
+                                                <span>-{formatCurrency(d.coupon_discount)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between text-base font-bold text-slate-900 pt-1">
+                                            <span>Total</span>
+                                            <span>{formatCurrency(o.total)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Pagamento */}
+                            <div>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                    <CreditCard size={15} /> Pagamento
+                                </h3>
+                                <div className="bg-slate-50 rounded-lg p-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                                        <div>
+                                            <span className="text-slate-500">Metodo</span>
+                                            <p className="font-medium text-slate-900">
+                                                {o.payment_method === 'pix' ? 'PIX' : o.payment_method === 'credit_card' ? 'Cartao de Credito' : o.payment_method || '-'}
+                                            </p>
+                                        </div>
+                                        {o.installments > 1 && (
+                                            <div>
+                                                <span className="text-slate-500">Parcelas</span>
+                                                <p className="font-medium text-slate-900">{o.installments}x</p>
+                                            </div>
+                                        )}
+                                        {o.gateway_type && (
+                                            <div>
+                                                <span className="text-slate-500">Gateway</span>
+                                                <p className="font-medium text-slate-900 capitalize">{o.gateway_type}</p>
+                                            </div>
+                                        )}
+                                        {o.gateway_status && (
+                                            <div>
+                                                <span className="text-slate-500">Status Gateway</span>
+                                                <p className="font-medium text-slate-900">{o.gateway_status}</p>
+                                            </div>
+                                        )}
+                                        {(o.ipag_transaction_id || o.gateway_transaction_id) && (
+                                            <div className="col-span-2">
+                                                <span className="text-slate-500">Transaction ID</span>
+                                                <p className="font-medium text-slate-900 text-xs break-all">{o.gateway_transaction_id || o.ipag_transaction_id}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Envio & NF */}
+                            {(o.tracking_code || o.carrier || o.nota_fiscal_number) && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                        <Truck size={15} /> Envio e Nota Fiscal
+                                    </h3>
+                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
+                                        {o.carrier && (
                                             <div className="flex justify-between">
                                                 <span className="text-slate-500">Transportadora</span>
-                                                <span className="font-medium">{selectedOrder.carrier}</span>
+                                                <span className="font-medium">{o.carrier}</span>
                                             </div>
                                         )}
-                                        {selectedOrder.tracking_code && (
-                                            <div className="flex justify-between">
-                                                <span className="text-slate-500">Codigo de Rastreio</span>
-                                                <span className="font-medium">{selectedOrder.tracking_code}</span>
-                                                {selectedOrder.tracking_url && (
-                                                    <a href={selectedOrder.tracking_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
-                                                        <ExternalLink size={12} /> Rastrear
-                                                    </a>
-                                                )}
+                                        {o.tracking_code && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Rastreio</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{o.tracking_code}</span>
+                                                    <button
+                                                        onClick={() => navigator.clipboard.writeText(o.tracking_code)}
+                                                        className="text-slate-400 hover:text-slate-600"
+                                                        title="Copiar"
+                                                    >
+                                                        <Copy size={12} />
+                                                    </button>
+                                                    {o.tracking_url && (
+                                                        <a href={o.tracking_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1 text-xs">
+                                                            <ExternalLink size={12} /> Rastrear
+                                                        </a>
+                                                    )}
+                                                </div>
                                             </div>
                                         )}
-                                        {selectedOrder.nota_fiscal_number && (
+                                        {o.nota_fiscal_number && (
                                             <div className="flex justify-between items-center">
                                                 <span className="text-slate-500">Nota Fiscal</span>
                                                 <div className="flex items-center gap-2">
                                                     <FileText size={14} className="text-primary" />
                                                     <span className="font-medium">
-                                                        NF {selectedOrder.nota_fiscal_number}
-                                                        {selectedOrder.nota_fiscal_serie && ` / Serie ${selectedOrder.nota_fiscal_serie}`}
+                                                        NF {o.nota_fiscal_number}
+                                                        {o.nota_fiscal_serie && ` / Serie ${o.nota_fiscal_serie}`}
                                                     </span>
-                                                    {selectedOrder.nota_fiscal_pdf_url && (
+                                                    {o.nota_fiscal_pdf_url && (
                                                         <a
-                                                            href={`${window.location.origin.replace(':5173', ':3000')}${selectedOrder.nota_fiscal_pdf_url}`}
+                                                            href={`${window.location.origin.replace(':5173', ':3000')}${o.nota_fiscal_pdf_url}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20"
@@ -425,10 +540,81 @@ export default function OrdersManagement() {
                                 </div>
                             )}
 
-                            {/* Código de Rastreio */}
-                            {selectedOrder.status === 'paid' && (
+                            {/* Origem / Tracking UTM */}
+                            {o.tracking_data && Object.keys(o.tracking_data).length > 0 && (
                                 <div>
-                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Código de Rastreio</h3>
+                                    <h3 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-1.5">
+                                        <Globe size={15} /> Origem do Pedido
+                                    </h3>
+                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
+                                        {o.tracking_data.pe_channel && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Canal</span>
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${(channelConfig[o.tracking_data.pe_channel] || channelConfig.direct).color}`}>
+                                                    {(channelConfig[o.tracking_data.pe_channel] || { label: o.tracking_data.pe_channel }).label}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.utm_source && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Fonte / Meio</span>
+                                                <span className="font-medium">{o.tracking_data.utm_source}{o.tracking_data.utm_medium ? ` / ${o.tracking_data.utm_medium}` : ''}</span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.utm_campaign && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Campanha</span>
+                                                <span className="font-medium">{o.tracking_data.utm_campaign}</span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.utm_term && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Termo</span>
+                                                <span className="font-medium">{o.tracking_data.utm_term}</span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.utm_content && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Conteudo</span>
+                                                <span className="font-medium">{o.tracking_data.utm_content}</span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.pe_landing && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Landing Page</span>
+                                                <span className="font-medium text-xs max-w-[320px] truncate" title={o.tracking_data.pe_landing}>
+                                                    {o.tracking_data.pe_landing}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {o.tracking_data.pe_referrer && o.tracking_data.pe_referrer !== 'direct' && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Referrer</span>
+                                                <span className="font-medium text-xs max-w-[320px] truncate" title={o.tracking_data.pe_referrer}>
+                                                    {o.tracking_data.pe_referrer}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {(o.tracking_data.gclid || o.tracking_data.gbraid || o.tracking_data.wbraid || o.tracking_data.fbclid || o.tracking_data.ttclid || o.tracking_data.msclkid) && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Click ID</span>
+                                                <span className="font-medium text-xs">
+                                                    {o.tracking_data.gclid ? `gclid: ${o.tracking_data.gclid.substring(0, 20)}...` :
+                                                     o.tracking_data.fbclid ? `fbclid: ${o.tracking_data.fbclid.substring(0, 20)}...` :
+                                                     o.tracking_data.ttclid ? `ttclid: ${o.tracking_data.ttclid.substring(0, 20)}...` :
+                                                     o.tracking_data.msclkid ? `msclkid: ${o.tracking_data.msclkid.substring(0, 20)}...` :
+                                                     o.tracking_data.gbraid ? `gbraid` : 'wbraid'}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Codigo de Rastreio - Input */}
+                            {o.status === 'paid' && (
+                                <div>
+                                    <h3 className="text-sm font-semibold text-slate-700 mb-2">Adicionar Codigo de Rastreio</h3>
                                     <input
                                         type="text"
                                         value={trackingCode}
@@ -440,41 +626,41 @@ export default function OrdersManagement() {
                             )}
 
                             {/* Atualizar Status */}
-                            <div>
-                                <h3 className="text-sm font-medium text-slate-500 mb-2">Atualizar Status</h3>
+                            <div className="border-t border-slate-200 pt-4">
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3">Atualizar Status</h3>
                                 <div className="flex flex-wrap gap-2">
-                                    {selectedOrder.status === 'pending' && (
+                                    {o.status === 'pending' && (
                                         <button
-                                            onClick={() => updateOrderStatus(selectedOrder.id, 'paid')}
+                                            onClick={() => updateOrderStatus(o.id, 'paid')}
                                             disabled={updating}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
                                         >
                                             Marcar como Pago
                                         </button>
                                     )}
-                                    {selectedOrder.status === 'paid' && (
+                                    {o.status === 'paid' && (
                                         <button
-                                            onClick={() => updateOrderStatus(selectedOrder.id, 'shipped')}
+                                            onClick={() => updateOrderStatus(o.id, 'shipped')}
                                             disabled={updating}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
                                         >
                                             Marcar como Enviado
                                         </button>
                                     )}
-                                    {selectedOrder.status === 'shipped' && (
+                                    {o.status === 'shipped' && (
                                         <button
-                                            onClick={() => updateOrderStatus(selectedOrder.id, 'delivered')}
+                                            onClick={() => updateOrderStatus(o.id, 'delivered')}
                                             disabled={updating}
-                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm font-medium"
                                         >
                                             Marcar como Entregue
                                         </button>
                                     )}
-                                    {['pending', 'paid'].includes(selectedOrder.status) && (
+                                    {['pending', 'paid'].includes(o.status) && (
                                         <button
-                                            onClick={() => updateOrderStatus(selectedOrder.id, 'canceled')}
+                                            onClick={() => updateOrderStatus(o.id, 'canceled')}
                                             disabled={updating}
-                                            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 disabled:opacity-50 text-sm font-medium"
                                         >
                                             Cancelar Pedido
                                         </button>
@@ -484,7 +670,8 @@ export default function OrdersManagement() {
                         </div>
                     </div>
                 </div>
-            )}
+                )
+            })()}
         </div>
     )
 }

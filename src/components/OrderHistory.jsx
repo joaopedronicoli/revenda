@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { getOrders } from '../lib/database'
 import { useCartStore } from '../store/cartStore'
-import { Package, Clock, CheckCircle, Truck, AlertCircle, ShoppingCart, ExternalLink, CreditCard } from 'lucide-react'
+import { Package, Clock, CheckCircle, Truck, AlertCircle, ShoppingCart, ExternalLink, CreditCard, FileText } from 'lucide-react'
 import { getDeliveryEstimate, getEstimatedDeliveryDate } from '../lib/deliveryEstimates'
 
 export default function OrderHistory() {
@@ -250,6 +250,49 @@ export default function OrderHistory() {
                                         )}
                                     </div>
                                 </div>
+
+                                {/* Tracking, NF & Carrier Info */}
+                                {['shipped', 'delivered'].includes(order.status) && (order.nota_fiscal_number || order.carrier || order.tracking_code) && (
+                                    <div className="border-t border-slate-100 pt-4 mt-2">
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            {order.carrier && (
+                                                <div>
+                                                    <span className="text-slate-500 block text-xs">Transportadora</span>
+                                                    <span className="font-medium text-slate-900">{order.carrier}</span>
+                                                </div>
+                                            )}
+                                            {order.tracking_code && (
+                                                <div>
+                                                    <span className="text-slate-500 block text-xs">Codigo de Rastreio</span>
+                                                    <span className="font-medium text-slate-900">{order.tracking_code}</span>
+                                                </div>
+                                            )}
+                                            {order.nota_fiscal_number && (
+                                                <div className="col-span-2">
+                                                    <span className="text-slate-500 block text-xs">Nota Fiscal</span>
+                                                    <div className="flex items-center gap-2 mt-0.5">
+                                                        <FileText size={14} className="text-primary" />
+                                                        <span className="font-medium text-slate-900">
+                                                            NF {order.nota_fiscal_number}
+                                                            {order.nota_fiscal_serie && ` / Serie ${order.nota_fiscal_serie}`}
+                                                        </span>
+                                                        {order.nota_fiscal_pdf_url && (
+                                                            <a
+                                                                href={`${(import.meta.env.VITE_API_URL || 'https://revenda.pelg.com.br')}${order.nota_fiscal_pdf_url}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20 transition-colors"
+                                                            >
+                                                                <ExternalLink size={10} />
+                                                                Ver DANFE
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Items */}
                                 <div className="border-t border-slate-100 pt-4">

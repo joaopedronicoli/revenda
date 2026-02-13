@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { Package, Search, Filter, Eye, Truck, CheckCircle, Clock, XCircle, FileText, ExternalLink } from 'lucide-react'
 import api from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 
@@ -272,6 +272,60 @@ export default function OrdersManagement() {
                                         {selectedOrder.addresses.neighborhood}, {selectedOrder.addresses.city} - {selectedOrder.addresses.state}
                                     </p>
                                     <p className="text-sm text-slate-500">CEP: {selectedOrder.addresses.cep}</p>
+                                </div>
+                            )}
+
+                            {/* Rastreio, Transportadora & NF */}
+                            {(selectedOrder.tracking_code || selectedOrder.carrier || selectedOrder.nota_fiscal_number || selectedOrder.bling_order_id) && (
+                                <div>
+                                    <h3 className="text-sm font-medium text-slate-500 mb-2">Informacoes de Envio e NF</h3>
+                                    <div className="bg-slate-50 rounded-lg p-4 space-y-2 text-sm">
+                                        {selectedOrder.bling_order_id && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Bling Pedido ID</span>
+                                                <span className="font-medium">{selectedOrder.bling_order_id}</span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.carrier && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Transportadora</span>
+                                                <span className="font-medium">{selectedOrder.carrier}</span>
+                                            </div>
+                                        )}
+                                        {selectedOrder.tracking_code && (
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-500">Codigo de Rastreio</span>
+                                                <span className="font-medium">{selectedOrder.tracking_code}</span>
+                                                {selectedOrder.tracking_url && (
+                                                    <a href={selectedOrder.tracking_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                                        <ExternalLink size={12} /> Rastrear
+                                                    </a>
+                                                )}
+                                            </div>
+                                        )}
+                                        {selectedOrder.nota_fiscal_number && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">Nota Fiscal</span>
+                                                <div className="flex items-center gap-2">
+                                                    <FileText size={14} className="text-primary" />
+                                                    <span className="font-medium">
+                                                        NF {selectedOrder.nota_fiscal_number}
+                                                        {selectedOrder.nota_fiscal_serie && ` / Serie ${selectedOrder.nota_fiscal_serie}`}
+                                                    </span>
+                                                    {selectedOrder.nota_fiscal_pdf_url && (
+                                                        <a
+                                                            href={`${window.location.origin.replace(':5173', ':3000')}${selectedOrder.nota_fiscal_pdf_url}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded text-xs font-medium hover:bg-primary/20"
+                                                        >
+                                                            <ExternalLink size={10} /> PDF
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

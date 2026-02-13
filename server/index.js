@@ -3,12 +3,15 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
 const db = require('./db');
 const ipagService = require('./ipagService');
 const woocommerceService = require('./woocommerceService');
 const emailService = require('./emailService');
 const billingService = require('./billingService');
 const gatewayRouter = require('./gateways/gatewayRouter');
+const blingService = require('./blingService');
 const { updateSchema } = require('./setup_db');
 require('dotenv').config();
 
@@ -23,6 +26,13 @@ app.use(express.json({
         }
     }
 }));
+
+// Static files para notas fiscais
+const notasDir = path.join(__dirname, 'uploads', 'notas');
+if (!fs.existsSync(notasDir)) {
+    fs.mkdirSync(notasDir, { recursive: true });
+}
+app.use('/uploads/notas', express.static(notasDir));
 
 // =============================================
 // CONSTANTES DE NIVEL
@@ -4220,6 +4230,10 @@ setInterval(autRefreshBlingToken, 30 * 60 * 1000);
 // Rodar uma vez no boot (com delay de 10s para o banco estar pronto)
 setTimeout(autRefreshBlingToken, 10000);
 
+// Auto-refresh tokens Bling por empresa faturadora (a cada 30min)
+setInterval(() => blingService.autoRefreshAllBlingCompanyTokens(), 30 * 60 * 1000);
+setTimeout(() => blingService.autoRefreshAllBlingCompanyTokens(), 12000);
+
 // GET /admin/integrations/bling/authorize — gerar URL OAuth
 app.get('/admin/integrations/bling/authorize', authenticateToken, requireAdmin, async (req, res) => {
     try {
@@ -4313,6 +4327,298 @@ app.get('/admin/integrations/bling/callback', async (req, res) => {
             <p>${String(err.message).replace(/</g, '&lt;')}</p>
             </body></html>
         `);
+    }
+});
+
+// =============================================
+// BLING POR EMPRESA FATURADORA — OAuth, Webhook, CRUD
+// =============================================
+
+// PUT /admin/billing-companies/:id/bling — salvar client_id e client_secret
+app.put('/admin/billing-companies/:id/bling', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { client_id, client_secret } = req.body;
+        if (!client_id || !client_secret) return res.status(400).json({ error: 'client_id e client_secret sao obrigatorios' });
+
+        await db.query(
+            `UPDATE billing_companies SET bling_credentials = COALESCE(bling_credentials, '{}') || $1, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify({ client_id, client_secret }), req.params.id]
+        );
+        res.json({ success: true, message: 'Credenciais Bling salvas' });
+    } catch (err) {
+        console.error('Erro ao salvar credenciais Bling:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /admin/billing-companies/:id/bling — status da conexao
+app.get('/admin/billing-companies/:id/bling', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { rows } = await db.query('SELECT bling_credentials FROM billing_companies WHERE id = $1', [req.params.id]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Empresa nao encontrada' });
+
+        const creds = rows[0].bling_credentials || {};
+        const hasCredentials = !!(creds.client_id && creds.client_secret);
+        const isConnected = !!(creds.access_token && creds.refresh_token);
+        const expiresAt = creds.token_expires_at ? new Date(creds.token_expires_at) : null;
+        const isExpiring = expiresAt ? (expiresAt.getTime() - Date.now() < 60 * 60 * 1000) : false;
+
+        res.json({
+            has_credentials: hasCredentials,
+            connected: isConnected,
+            expires_at: creds.token_expires_at || null,
+            is_expiring: isExpiring,
+            client_id: creds.client_id || ''
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /admin/billing-companies/:id/bling/test — testar conexao
+app.post('/admin/billing-companies/:id/bling/test', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const accessToken = await blingService.getBlingToken(parseInt(req.params.id));
+        const resp = await axios.get('https://www.bling.com.br/Api/v3/contatos?limite=1', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        res.json({ success: true, message: 'Bling conectado com sucesso!' });
+    } catch (err) {
+        res.json({ success: false, message: err.message });
+    }
+});
+
+// GET /admin/billing-companies/:id/bling/authorize — gerar URL OAuth
+app.get('/admin/billing-companies/:id/bling/authorize', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const companyId = req.params.id;
+        const { rows } = await db.query('SELECT bling_credentials FROM billing_companies WHERE id = $1', [companyId]);
+        if (rows.length === 0) return res.status(404).json({ error: 'Empresa nao encontrada' });
+
+        const creds = rows[0].bling_credentials || {};
+        if (!creds.client_id) return res.status(400).json({ error: 'Client ID nao configurado' });
+
+        const state = crypto.randomBytes(16).toString('hex');
+        await db.query(
+            `UPDATE billing_companies SET bling_credentials = bling_credentials || $1, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify({ oauth_state: state }), companyId]
+        );
+
+        const redirectUri = `${process.env.API_URL || process.env.FRONTEND_URL || 'https://revenda.pelg.com.br'}/admin/billing-companies/${companyId}/bling/callback`;
+        const url = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${encodeURIComponent(creds.client_id)}&state=${state}&redirect_uri=${encodeURIComponent(redirectUri)}`;
+        res.json({ url });
+    } catch (err) {
+        console.error('Erro ao gerar URL Bling OAuth (empresa):', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET /admin/billing-companies/:id/bling/callback — receber code do Bling
+app.get('/admin/billing-companies/:id/bling/callback', async (req, res) => {
+    const companyId = req.params.id;
+    const { code, state, error } = req.query;
+
+    if (error) {
+        return res.status(400).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro na autorizacao Bling</h1>
+            <p>${String(error).replace(/</g, '&lt;')}</p>
+            <script>setTimeout(() => window.close(), 3000);</script>
+            </body></html>
+        `);
+    }
+
+    if (!code) {
+        return res.status(400).send('<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h1>Codigo de autorizacao nao fornecido</h1></body></html>');
+    }
+
+    try {
+        const { rows } = await db.query('SELECT bling_credentials FROM billing_companies WHERE id = $1', [companyId]);
+        if (rows.length === 0) throw new Error('Empresa faturadora nao encontrada');
+
+        const creds = rows[0].bling_credentials || {};
+        if (creds.oauth_state && state !== creds.oauth_state) {
+            return res.status(400).send(`
+                <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+                <h1 style="color:#dc2626">Erro: state invalido</h1>
+                <p>Possivel tentativa de CSRF. Tente autorizar novamente.</p>
+                </body></html>
+            `);
+        }
+
+        if (!creds.client_id || !creds.client_secret) throw new Error('Client ID e Client Secret nao configurados');
+
+        const basicAuth = Buffer.from(`${creds.client_id}:${creds.client_secret}`).toString('base64');
+        const redirectUri = `${process.env.API_URL || process.env.FRONTEND_URL || 'https://revenda.pelg.com.br'}/admin/billing-companies/${companyId}/bling/callback`;
+
+        const tokenResp = await axios.post('https://www.bling.com.br/Api/v3/oauth/token',
+            new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }).toString(),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Authorization': `Basic ${basicAuth}` } }
+        );
+
+        const { access_token, refresh_token, expires_in } = tokenResp.data;
+        const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000)).toISOString();
+
+        await db.query(
+            `UPDATE billing_companies SET bling_credentials = (bling_credentials - 'oauth_state') || $1, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify({ access_token, refresh_token, token_expires_at: tokenExpiresAt }), companyId]
+        );
+
+        res.send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#16a34a">Bling autorizado com sucesso!</h1>
+            <p>Pode fechar esta aba.</p>
+            <script>
+                if (window.opener) { window.opener.postMessage('bling-company-oauth-success', '*'); }
+                setTimeout(() => window.close(), 3000);
+            </script>
+            </body></html>
+        `);
+    } catch (err) {
+        console.error('Erro callback Bling OAuth (empresa):', err.message);
+        res.status(500).send(`
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+            <h1 style="color:#dc2626">Erro ao conectar Bling</h1>
+            <p>${String(err.message).replace(/</g, '&lt;')}</p>
+            </body></html>
+        `);
+    }
+});
+
+// POST /webhooks/bling/:billingCompanyId — webhook do Bling (publico)
+app.post('/webhooks/bling/:billingCompanyId', async (req, res) => {
+    const { billingCompanyId } = req.params;
+    console.log(`[Bling Webhook] Recebido para empresa ${billingCompanyId}:`, JSON.stringify(req.body));
+
+    try {
+        const payload = req.body;
+        const blingOrderId = payload?.data?.id;
+        if (!blingOrderId) {
+            console.warn('[Bling Webhook] Payload sem data.id, ignorando');
+            return res.sendStatus(200);
+        }
+
+        // Get Bling token for this company
+        const accessToken = await blingService.getBlingToken(parseInt(billingCompanyId));
+
+        // Fetch order details from Bling
+        const blingOrder = await blingService.fetchBlingOrderDetails(accessToken, blingOrderId);
+        if (!blingOrder) {
+            console.warn(`[Bling Webhook] Pedido Bling ${blingOrderId} nao encontrado na API`);
+            return res.sendStatus(200);
+        }
+
+        const numeroPedidoLoja = blingOrder.numeroPedidoLoja || blingOrder.numero;
+        if (!numeroPedidoLoja) {
+            console.warn('[Bling Webhook] Pedido Bling sem numeroPedidoLoja');
+            return res.sendStatus(200);
+        }
+
+        // Match local order by woocommerce_order_number
+        const { rows: localOrders } = await db.query(
+            'SELECT * FROM orders WHERE woocommerce_order_number = $1',
+            [String(numeroPedidoLoja)]
+        );
+        if (localOrders.length === 0) {
+            console.warn(`[Bling Webhook] Pedido local nao encontrado para numeroPedidoLoja=${numeroPedidoLoja}`);
+            return res.sendStatus(200);
+        }
+
+        const localOrder = localOrders[0];
+        const updates = { bling_order_id: String(blingOrderId) };
+
+        // Extract tracking info
+        const transporte = blingOrder.transporte || {};
+        const volumes = transporte.volumes || [];
+        if (volumes.length > 0 && volumes[0].codigoRastreamento) {
+            updates.tracking_code = volumes[0].codigoRastreamento;
+
+            // Build tracking URL
+            const code = updates.tracking_code;
+            if (code.match(/^[A-Z]{2}\d+[A-Z]{2}$/)) {
+                updates.tracking_url = `https://www.linkcorreios.com.br/?id=${code}`;
+            }
+        }
+
+        // Extract carrier
+        const transportador = transporte.transportador || transporte.nomeTransportador;
+        if (transportador) {
+            updates.carrier = typeof transportador === 'object' ? transportador.nome : String(transportador);
+        }
+
+        // Extract NF info
+        const notaFiscal = blingOrder.notaFiscal || (blingOrder.notas && blingOrder.notas.length > 0 ? blingOrder.notas[0] : null);
+        if (notaFiscal) {
+            const nfId = notaFiscal.id;
+            if (nfId) {
+                try {
+                    const nfDetails = await blingService.fetchBlingNfe(accessToken, nfId);
+                    if (nfDetails) {
+                        updates.nota_fiscal_number = nfDetails.numero || notaFiscal.numero;
+                        updates.nota_fiscal_serie = nfDetails.serie || notaFiscal.serie;
+
+                        // Download DANFE PDF
+                        const pdfLink = nfDetails.linkDanfe || nfDetails.xml?.linkDanfe;
+                        if (pdfLink) {
+                            try {
+                                const savedPath = await blingService.downloadAndSaveDanfe(pdfLink, localOrder.id, accessToken);
+                                updates.nota_fiscal_pdf_url = savedPath;
+                            } catch (dlErr) {
+                                console.error(`[Bling Webhook] Erro ao baixar DANFE:`, dlErr.message);
+                            }
+                        }
+                    }
+                } catch (nfErr) {
+                    console.error(`[Bling Webhook] Erro ao buscar NF ${nfId}:`, nfErr.message);
+                    // Fallback: use info from the order itself
+                    updates.nota_fiscal_number = notaFiscal.numero;
+                    updates.nota_fiscal_serie = notaFiscal.serie;
+                }
+            } else {
+                updates.nota_fiscal_number = notaFiscal.numero;
+                updates.nota_fiscal_serie = notaFiscal.serie;
+            }
+        }
+
+        // Determine status update
+        const situacao = blingOrder.situacao?.valor || blingOrder.situacao?.id;
+        if (situacao) {
+            const situacaoLower = String(situacao).toLowerCase();
+            if (situacaoLower.includes('enviado') || situacaoLower.includes('shipped') || situacaoLower === '9') {
+                if (!['shipped', 'delivered'].includes(localOrder.status)) {
+                    updates.status = 'shipped';
+                }
+            } else if (situacaoLower.includes('entregue') || situacaoLower.includes('delivered') || situacaoLower === '10') {
+                updates.status = 'delivered';
+            }
+        }
+
+        // Build UPDATE query
+        const setClauses = [];
+        const values = [];
+        let paramIdx = 1;
+        for (const [key, val] of Object.entries(updates)) {
+            if (val !== undefined && val !== null) {
+                setClauses.push(`${key} = $${paramIdx}`);
+                values.push(val);
+                paramIdx++;
+            }
+        }
+
+        if (setClauses.length > 0) {
+            setClauses.push(`updated_at = NOW()`);
+            values.push(localOrder.id);
+            await db.query(
+                `UPDATE orders SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
+                values
+            );
+            console.log(`[Bling Webhook] Pedido ${localOrder.id} atualizado:`, JSON.stringify(updates));
+        }
+
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('[Bling Webhook] Erro:', err.message);
+        res.sendStatus(200); // Always return 200 to avoid retries from Bling
     }
 });
 

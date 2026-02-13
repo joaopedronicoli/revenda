@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Building2, Plus, Trash2, Edit2, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Wifi, Eye, EyeOff, ChevronDown, ChevronUp, Save, X, AlertCircle, Link, Unlink, Loader2 } from 'lucide-react'
+import { CreditCard, Building2, Plus, Trash2, Edit2, CheckCircle2, XCircle, ToggleLeft, ToggleRight, TestTube, Wifi, Eye, EyeOff, ChevronDown, ChevronUp, Save, X, AlertCircle, Link, Unlink, Loader2, Copy, ExternalLink } from 'lucide-react'
 import api from '../../services/api'
 
 const BRAZILIAN_STATES = [
@@ -22,10 +22,16 @@ export default function PaymentGateways() {
     const [error, setError] = useState('')
     const [success, setSuccess] = useState('')
     const [connectingOAuth, setConnectingOAuth] = useState(null)
+    const [blingStatus, setBlingStatus] = useState({}) // { [companyId]: { connected, has_credentials, ... } }
+    const [blingForms, setBlingForms] = useState({}) // { [companyId]: { client_id, client_secret } }
+    const [blingTestResult, setBlingTestResult] = useState({})
+    const [blingTesting, setBlingTesting] = useState(null)
+    const [blingConnecting, setBlingConnecting] = useState(null)
+    const [blingSaving, setBlingSaving] = useState(null)
 
     useEffect(() => { loadData() }, [])
 
-    // Listener para callback OAuth do Mercado Pago
+    // Listener para callback OAuth do Mercado Pago e Bling
     useEffect(() => {
         const handler = (event) => {
             if (event.data === 'mercadopago-oauth-success') {
@@ -33,10 +39,17 @@ export default function PaymentGateways() {
                 setConnectingOAuth(null)
                 loadData()
             }
+            if (event.data === 'bling-company-oauth-success') {
+                flashSuccess('Bling conectado com sucesso!')
+                setBlingConnecting(null)
+                loadData()
+                // Reload bling status for all companies
+                companies.forEach(c => loadBlingStatus(c.id))
+            }
         }
         window.addEventListener('message', handler)
         return () => window.removeEventListener('message', handler)
-    }, [])
+    }, [companies])
 
     const loadData = async () => {
         try {
@@ -55,6 +68,7 @@ export default function PaymentGateways() {
 
             if (companiesList.length > 0 && !expandedCompany) {
                 setExpandedCompany(companiesList[0].id)
+                loadBlingStatus(companiesList[0].id)
             }
         } catch (err) {
             setError('Erro ao carregar dados: ' + err.message)
@@ -66,6 +80,64 @@ export default function PaymentGateways() {
     const flashSuccess = (msg) => {
         setSuccess(msg)
         setTimeout(() => setSuccess(''), 3000)
+    }
+
+    // ==========================================
+    // Bling per-company helpers
+    // ==========================================
+
+    const loadBlingStatus = async (companyId) => {
+        try {
+            const { data } = await api.get(`/admin/billing-companies/${companyId}/bling`)
+            setBlingStatus(prev => ({ ...prev, [companyId]: data }))
+            if (data.client_id) {
+                setBlingForms(prev => ({ ...prev, [companyId]: { client_id: data.client_id, client_secret: prev[companyId]?.client_secret || '' } }))
+            }
+        } catch (err) {
+            // no bling configured yet
+        }
+    }
+
+    const saveBlingCredentials = async (companyId) => {
+        const form = blingForms[companyId]
+        if (!form?.client_id || !form?.client_secret) {
+            setError('Preencha Client ID e Client Secret')
+            return
+        }
+        setBlingSaving(companyId)
+        try {
+            await api.put(`/admin/billing-companies/${companyId}/bling`, form)
+            flashSuccess('Credenciais Bling salvas!')
+            loadBlingStatus(companyId)
+        } catch (err) {
+            setError(err.response?.data?.error || err.message)
+        } finally {
+            setBlingSaving(null)
+        }
+    }
+
+    const authorizeBling = async (companyId) => {
+        setBlingConnecting(companyId)
+        try {
+            const { data } = await api.get(`/admin/billing-companies/${companyId}/bling/authorize`)
+            window.open(data.url, '_blank', 'width=600,height=700')
+        } catch (err) {
+            setError(err.response?.data?.error || err.message)
+            setBlingConnecting(null)
+        }
+    }
+
+    const testBlingConnection = async (companyId) => {
+        setBlingTesting(companyId)
+        setBlingTestResult(prev => ({ ...prev, [companyId]: null }))
+        try {
+            const { data } = await api.post(`/admin/billing-companies/${companyId}/bling/test`)
+            setBlingTestResult(prev => ({ ...prev, [companyId]: data }))
+        } catch (err) {
+            setBlingTestResult(prev => ({ ...prev, [companyId]: { success: false, message: err.message } }))
+        } finally {
+            setBlingTesting(null)
+        }
     }
 
     // ==========================================
@@ -505,7 +577,7 @@ export default function PaymentGateways() {
                                 {/* Company Header */}
                                 <div
                                     className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
-                                    onClick={() => setExpandedCompany(isExpanded ? null : company.id)}
+                                    onClick={() => { setExpandedCompany(isExpanded ? null : company.id); if (!isExpanded) loadBlingStatus(company.id) }}
                                 >
                                     <div className="flex items-center gap-4">
                                         <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${company.active ? 'bg-primary/10' : 'bg-slate-100'}`}>
@@ -681,6 +753,125 @@ export default function PaymentGateways() {
                                                 ))}
                                             </div>
                                         )}
+
+                                        {/* Bling Integration Section */}
+                                        <div className="mt-6 pt-5 border-t border-slate-200">
+                                            <h4 className="font-medium text-slate-800 flex items-center gap-2 mb-4">
+                                                <ExternalLink size={16} className="text-orange-500" />
+                                                Integracao Bling
+                                            </h4>
+
+                                            {/* Client ID / Secret */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Client ID</label>
+                                                    <input
+                                                        type="text"
+                                                        value={blingForms[company.id]?.client_id || ''}
+                                                        onChange={e => setBlingForms(prev => ({ ...prev, [company.id]: { ...prev[company.id], client_id: e.target.value } }))}
+                                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                                                        placeholder="Client ID do Bling"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs text-slate-500 mb-1">Client Secret</label>
+                                                    <input
+                                                        type="password"
+                                                        value={blingForms[company.id]?.client_secret || ''}
+                                                        onChange={e => setBlingForms(prev => ({ ...prev, [company.id]: { ...prev[company.id], client_secret: e.target.value } }))}
+                                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary outline-none"
+                                                        placeholder="Client Secret do Bling"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="flex flex-wrap gap-2 mb-4">
+                                                <button
+                                                    onClick={() => saveBlingCredentials(company.id)}
+                                                    disabled={blingSaving === company.id}
+                                                    className="px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 flex items-center gap-1 disabled:opacity-50"
+                                                >
+                                                    {blingSaving === company.id ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                                                    Salvar Credenciais
+                                                </button>
+
+                                                {blingStatus[company.id]?.has_credentials && (
+                                                    <button
+                                                        onClick={() => authorizeBling(company.id)}
+                                                        disabled={blingConnecting === company.id}
+                                                        className={`px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1 disabled:opacity-50 ${
+                                                            blingStatus[company.id]?.connected
+                                                                ? 'border border-orange-300 text-orange-700 hover:bg-orange-50'
+                                                                : 'bg-orange-500 text-white hover:bg-orange-600'
+                                                        }`}
+                                                    >
+                                                        {blingConnecting === company.id ? <Loader2 size={12} className="animate-spin" /> : <Link size={12} />}
+                                                        {blingStatus[company.id]?.connected ? 'Reconectar Bling' : 'Autorizar no Bling'}
+                                                    </button>
+                                                )}
+
+                                                {blingStatus[company.id]?.connected && (
+                                                    <button
+                                                        onClick={() => testBlingConnection(company.id)}
+                                                        disabled={blingTesting === company.id}
+                                                        className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-100 flex items-center gap-1 disabled:opacity-50"
+                                                    >
+                                                        {blingTesting === company.id ? <Loader2 size={12} className="animate-spin" /> : <TestTube size={12} />}
+                                                        Testar Conexao
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Status badge */}
+                                            <div className="flex items-center gap-2 mb-3">
+                                                {blingStatus[company.id]?.connected ? (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                        <CheckCircle2 size={12} /> Conectado
+                                                    </span>
+                                                ) : blingStatus[company.id]?.has_credentials ? (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                        <AlertCircle size={12} /> Nao autorizado
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">
+                                                        <XCircle size={12} /> Nao configurado
+                                                    </span>
+                                                )}
+                                                {blingStatus[company.id]?.is_expiring && (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                                                        <AlertCircle size={12} /> Token expirando
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Test result */}
+                                            {blingTestResult[company.id] && (
+                                                <div className={`p-3 rounded-lg text-sm flex items-center gap-2 mb-3 ${blingTestResult[company.id].success ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+                                                    {blingTestResult[company.id].success ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                                                    {blingTestResult[company.id].message}
+                                                </div>
+                                            )}
+
+                                            {/* Webhook URL info */}
+                                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                                <p className="text-xs text-orange-800 font-medium mb-1">URL do Webhook (configure no painel Bling):</p>
+                                                <div className="flex items-center gap-2">
+                                                    <code className="text-xs text-orange-700 break-all flex-1">
+                                                        {`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`}
+                                                    </code>
+                                                    <button
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`)
+                                                            flashSuccess('URL copiada!')
+                                                        }}
+                                                        className="p-1 text-orange-600 hover:text-orange-800"
+                                                        title="Copiar URL"
+                                                    >
+                                                        <Copy size={14} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

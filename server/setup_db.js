@@ -578,6 +578,25 @@ const updateSchema = async () => {
     }
     console.log('Colunas de gateway adicionadas em "orders".');
 
+    // Bling credentials por empresa faturadora
+    try {
+      await db.query("ALTER TABLE billing_companies ADD COLUMN IF NOT EXISTS bling_credentials JSONB DEFAULT '{}'");
+    } catch (e) { /* already exists */ }
+    console.log('Coluna bling_credentials adicionada em "billing_companies".');
+
+    // Colunas NF + Bling em orders
+    const blingOrderColumns = [
+      { sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS bling_order_id VARCHAR(50)" },
+      { sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS nota_fiscal_number VARCHAR(50)" },
+      { sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS nota_fiscal_serie VARCHAR(10)" },
+      { sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS nota_fiscal_pdf_url TEXT" },
+      { sql: "ALTER TABLE orders ADD COLUMN IF NOT EXISTS carrier VARCHAR(100)" },
+    ];
+    for (const col of blingOrderColumns) {
+      try { await db.query(col.sql); } catch (e) { /* already exists */ }
+    }
+    console.log('Colunas Bling/NF adicionadas em "orders".');
+
     console.log('Schema revenda_pelg atualizado com sucesso!');
   } catch (err) {
     console.error('Erro ao atualizar schema:', err);

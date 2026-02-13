@@ -3307,6 +3307,7 @@ app.get('/admin/payment-gateways', authenticateToken, requireAdmin, async (req, 
                 delete creds.refresh_token;
                 delete creds.token_expires_at;
                 delete creds.oauth_state;
+                delete creds.code_verifier;
                 delete creds.mp_user_id;
             }
             return { ...gw, credentials_masked: creds, credentials: undefined };
@@ -3442,14 +3443,18 @@ app.get('/admin/payment-gateways/:id/mercadopago/authorize', authenticateToken, 
         const csrfToken = crypto.randomBytes(16).toString('hex');
         const state = `${gw.id}:${csrfToken}`;
 
-        // Salvar state no gateway
-        const updatedCredentials = { ...gw.credentials, oauth_state: state };
+        // PKCE: gerar code_verifier e code_challenge
+        const codeVerifier = crypto.randomBytes(32).toString('base64url');
+        const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+
+        // Salvar state e code_verifier no gateway
+        const updatedCredentials = { ...gw.credentials, oauth_state: state, code_verifier: codeVerifier };
         await db.query(
             'UPDATE payment_gateways SET credentials = $1, updated_at = NOW() WHERE id = $2',
             [JSON.stringify(updatedCredentials), gw.id]
         );
 
-        const authUrl = `https://auth.mercadopago.com.br/authorization?client_id=${appId}&response_type=code&platform_id=mp&redirect_uri=${encodeURIComponent(MP_REDIRECT_URI)}&state=${encodeURIComponent(state)}`;
+        const authUrl = `https://auth.mercadopago.com.br/authorization?client_id=${appId}&response_type=code&platform_id=mp&redirect_uri=${encodeURIComponent(MP_REDIRECT_URI)}&state=${encodeURIComponent(state)}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
 
         res.json({ authUrl });
     } catch (err) {
@@ -3491,13 +3496,14 @@ app.get('/admin/payment-gateways/mercadopago/callback', async (req, res) => {
             return res.status(400).send('State CSRF invalido');
         }
 
-        // Trocar code por tokens
+        // Trocar code por tokens (com PKCE code_verifier)
         const tokenResponse = await axios.post('https://api.mercadopago.com/oauth/token', {
             client_id: gw.credentials.app_id,
             client_secret: gw.credentials.app_secret,
             code: code,
             redirect_uri: MP_REDIRECT_URI,
-            grant_type: 'authorization_code'
+            grant_type: 'authorization_code',
+            code_verifier: gw.credentials.code_verifier
         });
 
         const { access_token, refresh_token, expires_in, public_key, user_id } = tokenResponse.data;
@@ -3512,6 +3518,7 @@ app.get('/admin/payment-gateways/mercadopago/callback', async (req, res) => {
             token_expires_at: new Date(Date.now() + (expires_in * 1000)).toISOString()
         };
         delete updatedCredentials.oauth_state;
+        delete updatedCredentials.code_verifier;
 
         await db.query(
             'UPDATE payment_gateways SET credentials = $1, updated_at = NOW() WHERE id = $2',

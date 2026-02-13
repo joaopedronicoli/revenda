@@ -2154,8 +2154,24 @@ app.post('/payments/process', authenticateToken, async (req, res) => {
                 ]
             );
 
-            // Tratar pagamento recusado/falho
             const resultStatus = (result.status || '').toString().toLowerCase();
+
+            // Tratar pagamento aprovado imediatamente (cartao de credito)
+            if (resultStatus === 'approved' || resultStatus === 'paid' || resultStatus === 'captured') {
+                const { rows: orderRows } = await db.query('SELECT * FROM orders WHERE id = $1', [orderId]);
+                const order = orderRows[0];
+                if (order && order.status === 'pending') {
+                    await db.query(
+                        "UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1",
+                        [orderId]
+                    );
+                    console.log(`Payment process: pedido ${orderId} marcado como paid (status: ${resultStatus})`);
+                    const orderTotal = parseFloat(order.total) || 0;
+                    await processPostPaymentLogic(orderId, order.user_id, orderTotal, order.details);
+                }
+            }
+
+            // Tratar pagamento recusado/falho
             if (resultStatus === 'failed' || resultStatus === 'declined' || resultStatus === 'recusado') {
                 await db.query(
                     "UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1",

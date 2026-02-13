@@ -31,8 +31,8 @@ const GATEWAY_INFO = {
         supportedMethods: ['credit_card', 'pix'],
         oauth: true,
         credentialFields: [
-            { key: 'app_id', label: 'Application ID', type: 'text' },
-            { key: 'app_secret', label: 'Application Secret', type: 'password' }
+            { key: 'app_id', label: 'Client ID', type: 'text' },
+            { key: 'app_secret', label: 'Client Secret', type: 'password' }
         ]
     },
     stripe: {

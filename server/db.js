@@ -11,6 +11,11 @@ const pool = new Pool({
     port: process.env.DB_PORT,
 });
 
+// Garantir que cada conexao use timezone America/Sao_Paulo
+pool.on('connect', (client) => {
+    client.query("SET timezone = 'America/Sao_Paulo'");
+});
+
 pool.query('SELECT NOW()', (err, res) => {
     if (err) {
         console.error('Erro ao conectar no banco de dados:', err);

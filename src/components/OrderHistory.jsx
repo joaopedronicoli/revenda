@@ -225,7 +225,7 @@ export default function OrderHistory() {
                                                 year: 'numeric'
                                             })}
                                         </p>
-                                        {order.woocommerce_order_id && (
+                                        {order.woocommerce_order_id && order.woocommerce_order_number !== order.order_number && (
                                             <p className="text-xs text-slate-500 mt-1">
                                                 Nº Pedido Loja: #{order.woocommerce_order_number || order.woocommerce_order_id}
                                             </p>
@@ -258,25 +258,25 @@ export default function OrderHistory() {
                                     </p>
                                     <div className="space-y-1">
                                         {items.map((item, idx) => {
-                                            // Support both old and new data formats
                                             const quantity = item.quantity || item.qty || 1
-                                            const unitPrice = item.tablePrice || item.price_unit_final || item.price_table || 0
-                                            const itemTotal = unitPrice * quantity
-
                                             return (
                                                 <div
                                                     key={idx}
-                                                    className="flex justify-between text-sm text-slate-600"
+                                                    className="text-sm text-slate-600"
                                                 >
-                                                    <span>
-                                                        {quantity}x {item.name}
-                                                    </span>
-                                                    <span className="font-medium">
-                                                        {formatCurrency(itemTotal)}
-                                                    </span>
+                                                    {quantity}x {item.name}
                                                 </div>
                                             )
                                         })}
+                                        {order.details?.kit && (
+                                            <div className="text-sm text-primary font-medium">
+                                                + {order.details.kit.name}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex justify-between mt-3 pt-2 border-t border-slate-100">
+                                        <span className="text-sm font-semibold text-slate-700">Total pago:</span>
+                                        <span className="text-sm font-bold text-slate-900">{formatCurrency(order.total)}</span>
                                     </div>
                                 </div>
 

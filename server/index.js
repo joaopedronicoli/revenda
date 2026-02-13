@@ -2383,25 +2383,25 @@ app.get('/admin/dashboard', authenticateToken, requireAdmin, async (req, res) =>
 app.get('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
     try {
         const { filter, level } = req.query;
-        let query = 'SELECT id, name, email, role, telefone, document_type, cpf, cnpj, company_name, profession, approval_status, approved_by, approved_at, rejection_reason, created_at, level, total_accumulated, last_purchase_date, commission_balance, has_purchased_kit, first_order_completed, points, affiliate_type, affiliate_status FROM users';
+        let query = `SELECT u.id, u.name, u.email, u.role, u.telefone, u.document_type, u.cpf, u.cnpj, u.company_name, u.profession, u.approval_status, u.approved_by, u.approved_at, u.rejection_reason, u.created_at, u.level, u.total_accumulated, u.last_purchase_date, u.commission_balance, u.has_purchased_kit, u.first_order_completed, u.points, u.affiliate_type, u.affiliate_status, u.referred_by, ref.referral_code as referrer_code, ref.name as referrer_name FROM users u LEFT JOIN users ref ON u.referred_by = ref.id`;
         const params = [];
         const conditions = [];
 
         if (filter && filter !== 'all') {
             params.push(filter);
-            conditions.push(`approval_status = $${params.length}`);
+            conditions.push(`u.approval_status = $${params.length}`);
         }
 
         if (level && level !== 'all') {
             params.push(level);
-            conditions.push(`level = $${params.length}`);
+            conditions.push(`u.level = $${params.length}`);
         }
 
         if (conditions.length > 0) {
             query += ' WHERE ' + conditions.join(' AND ');
         }
 
-        query += ' ORDER BY created_at DESC';
+        query += ' ORDER BY u.created_at DESC';
 
         const { rows } = await db.query(query, params);
         res.json(rows);

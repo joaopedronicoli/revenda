@@ -373,6 +373,16 @@ export default function UsersManagement() {
                                     <p><span className="font-medium">Acumulado:</span> R$ {parseFloat(selectedUser.total_accumulated || 0).toFixed(2)}</p>
                                     <p><span className="font-medium">Saldo Comissao:</span> R$ {parseFloat(selectedUser.commission_balance || 0).toFixed(2)}</p>
                                     <p><span className="font-medium">Pontos:</span> {selectedUser.points || 0}</p>
+                                    <p>
+                                        <span className="font-medium">Indicado por:</span>{' '}
+                                        {selectedUser.referrer_code
+                                            ? <span className="text-primary font-mono">{selectedUser.referrer_code}</span>
+                                            : <span className="text-slate-400">Nenhum</span>
+                                        }
+                                        {selectedUser.referrer_name && (
+                                            <span className="text-slate-500 text-sm ml-1">({selectedUser.referrer_name})</span>
+                                        )}
+                                    </p>
                                     {selectedUser.rejection_reason && (
                                         <p className="text-red-600"><span className="font-medium">Motivo rejeicao:</span> {selectedUser.rejection_reason}</p>
                                     )}

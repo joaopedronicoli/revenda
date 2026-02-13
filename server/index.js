@@ -781,10 +781,20 @@ app.get('/admin/woocommerce/products', authenticateToken, requireAdmin, async (r
     }
 });
 
-// Helper: strip HTML tags from string
+// Helper: strip HTML tags and entities from string
 function stripHtml(html) {
     if (!html) return '';
-    return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&nbsp;/g, ' ').trim();
+    return html
+        .replace(/<[^>]*>/g, '')       // Remove HTML tags
+        .replace(/&nbsp;/g, ' ')       // Non-breaking space
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#0?39;/g, "'")
+        .replace(/&[a-zA-Z]+;/g, '')   // Remove any remaining HTML entities
+        .replace(/\s+/g, ' ')          // Collapse multiple whitespace
+        .trim();
 }
 
 // Admin: sync WooCommerce products to local DB
@@ -809,7 +819,7 @@ app.post('/admin/woocommerce/sync-products', authenticateToken, requireAdmin, as
 
             const image = wcp.images?.[0]?.src || null;
             const price = parseFloat(wcp.price) || parseFloat(wcp.regular_price) || 0;
-            const description = stripHtml(wcp.short_description || '');
+            const description = stripHtml(wcp.short_description) || stripHtml(wcp.description) || '';
 
             // Auto-detect kit by category or tag containing "kit" (case-insensitive)
             const categories = (wcp.categories || []).map(c => c.name?.toLowerCase() || '');

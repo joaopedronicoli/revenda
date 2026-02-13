@@ -194,13 +194,23 @@ export default function Connections() {
         try {
             const { data } = await api.get(`/admin/integrations/${type}/authorize`)
             if (data.url) {
-                window.open(data.url, '_blank', 'width=600,height=700')
+                const popup = window.open(data.url, '_blank', 'width=600,height=700')
+                // Monitor popup close to clear loading state
+                if (popup) {
+                    const timer = setInterval(() => {
+                        if (popup.closed) {
+                            clearInterval(timer)
+                            setAuthorizingType(null)
+                        }
+                    }, 500)
+                } else {
+                    setAuthorizingType(null)
+                }
             } else {
                 throw new Error(data.error || 'URL nao retornada')
             }
         } catch (err) {
             setError(err.response?.data?.error || err.message || 'Erro ao autorizar')
-        } finally {
             setAuthorizingType(null)
         }
     }

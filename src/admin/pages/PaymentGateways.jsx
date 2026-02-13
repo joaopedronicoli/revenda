@@ -120,7 +120,18 @@ export default function PaymentGateways() {
         setBlingConnecting(companyId)
         try {
             const { data } = await api.get(`/admin/billing-companies/${companyId}/bling/authorize`)
-            window.open(data.url, '_blank', 'width=600,height=700')
+            const popup = window.open(data.url, '_blank', 'width=600,height=700')
+            // Monitor popup close to clear loading state
+            if (popup) {
+                const timer = setInterval(() => {
+                    if (popup.closed) {
+                        clearInterval(timer)
+                        setBlingConnecting(null)
+                    }
+                }, 500)
+            } else {
+                setBlingConnecting(null)
+            }
         } catch (err) {
             setError(err.response?.data?.error || err.message)
             setBlingConnecting(null)
@@ -852,23 +863,43 @@ export default function PaymentGateways() {
                                                 </div>
                                             )}
 
-                                            {/* Webhook URL info */}
-                                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                                                <p className="text-xs text-orange-800 font-medium mb-1">URL do Webhook (configure no painel Bling):</p>
-                                                <div className="flex items-center gap-2">
-                                                    <code className="text-xs text-orange-700 break-all flex-1">
-                                                        {`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`}
-                                                    </code>
-                                                    <button
-                                                        onClick={() => {
-                                                            navigator.clipboard.writeText(`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`)
-                                                            flashSuccess('URL copiada!')
-                                                        }}
-                                                        className="p-1 text-orange-600 hover:text-orange-800"
-                                                        title="Copiar URL"
-                                                    >
-                                                        <Copy size={14} />
-                                                    </button>
+                                            {/* Redirect URI + Webhook URL info */}
+                                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 space-y-3">
+                                                <div>
+                                                    <p className="text-xs text-orange-800 font-medium mb-1">Redirect URI (configure no aplicativo Bling):</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <code className="text-xs text-orange-700 break-all flex-1">
+                                                            {`${window.location.origin.replace(':5173', ':3000')}/admin/billing-companies/${company.id}/bling/callback`}
+                                                        </code>
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(`${window.location.origin.replace(':5173', ':3000')}/admin/billing-companies/${company.id}/bling/callback`)
+                                                                flashSuccess('Redirect URI copiada!')
+                                                            }}
+                                                            className="p-1 text-orange-600 hover:text-orange-800"
+                                                            title="Copiar Redirect URI"
+                                                        >
+                                                            <Copy size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-orange-800 font-medium mb-1">URL do Webhook (configure no painel Bling):</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <code className="text-xs text-orange-700 break-all flex-1">
+                                                            {`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`}
+                                                        </code>
+                                                        <button
+                                                            onClick={() => {
+                                                                navigator.clipboard.writeText(`${window.location.origin.replace(':5173', ':3000')}/webhooks/bling/${company.id}`)
+                                                                flashSuccess('URL copiada!')
+                                                            }}
+                                                            className="p-1 text-orange-600 hover:text-orange-800"
+                                                            title="Copiar URL"
+                                                        >
+                                                            <Copy size={14} />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>

@@ -1719,7 +1719,11 @@ app.delete('/addresses/:id', authenticateToken, async (req, res) => {
 app.get('/orders', authenticateToken, async (req, res) => {
     try {
         const { status } = req.query;
-        let query = 'SELECT o.*, a.nickname as address_nickname, a.street as address_street, a.city as address_city, a.state as address_state FROM orders o LEFT JOIN addresses a ON o.address_id = a.id WHERE o.user_id = $1';
+        let query = `SELECT o.*,
+            a.nickname as addr_nickname, a.street as addr_street, a.number as addr_number,
+            a.complement as addr_complement, a.neighborhood as addr_neighborhood,
+            a.city as addr_city, a.state as addr_state, a.cep as addr_cep
+            FROM orders o LEFT JOIN addresses a ON o.address_id = a.id WHERE o.user_id = $1`;
         const params = [req.user.id];
 
         if (status) {
@@ -1730,7 +1734,26 @@ app.get('/orders', authenticateToken, async (req, res) => {
         query += ' ORDER BY o.created_at DESC';
 
         const { rows } = await db.query(query, params);
-        res.json(rows);
+
+        // Montar objeto addresses para cada pedido
+        const ordersWithAddress = rows.map(row => {
+            const { addr_nickname, addr_street, addr_number, addr_complement, addr_neighborhood, addr_city, addr_state, addr_cep, ...order } = row;
+            if (addr_street) {
+                order.addresses = {
+                    nickname: addr_nickname,
+                    street: addr_street,
+                    number: addr_number,
+                    complement: addr_complement,
+                    neighborhood: addr_neighborhood,
+                    city: addr_city,
+                    state: addr_state,
+                    cep: addr_cep
+                };
+            }
+            return order;
+        });
+
+        res.json(ordersWithAddress);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar pedidos' });
@@ -1740,12 +1763,31 @@ app.get('/orders', authenticateToken, async (req, res) => {
 app.get('/orders/:id', authenticateToken, async (req, res) => {
     try {
         const { rows } = await db.query(
-            'SELECT o.*, a.* FROM orders o LEFT JOIN addresses a ON o.address_id = a.id WHERE o.id = $1 AND o.user_id = $2',
+            `SELECT o.*,
+                a.nickname as addr_nickname, a.street as addr_street, a.number as addr_number,
+                a.complement as addr_complement, a.neighborhood as addr_neighborhood,
+                a.city as addr_city, a.state as addr_state, a.cep as addr_cep
+             FROM orders o LEFT JOIN addresses a ON o.address_id = a.id
+             WHERE o.id = $1 AND o.user_id = $2`,
             [req.params.id, req.user.id]
         );
 
         if (rows.length === 0) return res.status(404).json({ message: 'Pedido nao encontrado' });
-        res.json(rows[0]);
+
+        const { addr_nickname, addr_street, addr_number, addr_complement, addr_neighborhood, addr_city, addr_state, addr_cep, ...order } = rows[0];
+        if (addr_street) {
+            order.addresses = {
+                nickname: addr_nickname,
+                street: addr_street,
+                number: addr_number,
+                complement: addr_complement,
+                neighborhood: addr_neighborhood,
+                city: addr_city,
+                state: addr_state,
+                cep: addr_cep
+            };
+        }
+        res.json(order);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Erro ao buscar pedido' });

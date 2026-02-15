@@ -15,14 +15,14 @@ export default function OrderHistory() {
     const [filter, setFilter] = useState('all')
 
     useEffect(() => {
-        loadOrders()
-    }, [filter])
+        if (user?.id) loadOrders()
+    }, [filter, user?.id])
 
     const loadOrders = async () => {
         try {
             setLoading(true)
             const data = await getOrders(
-                user.id,
+                user?.id,
                 filter === 'all' ? null : filter
             )
             setOrders(data)
@@ -210,7 +210,7 @@ export default function OrderHistory() {
                                 className="bg-white rounded-xl p-6 border border-slate-200 hover:shadow-md transition-shadow"
                             >
                                 {/* Order Header */}
-                                <div className="flex items-start justify-between mb-4">
+                                <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-2">
                                     <div>
                                         <div className="flex items-center gap-2 mb-1">
                                             <Package size={18} className="text-primary" />
@@ -254,7 +254,7 @@ export default function OrderHistory() {
                                 {/* Tracking, NF & Carrier Info */}
                                 {['shipped', 'delivered'].includes(order.status) && (order.nota_fiscal_number || order.carrier || order.tracking_code) && (
                                     <div className="border-t border-slate-100 pt-4 mt-2">
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                             {order.carrier && (
                                                 <div>
                                                     <span className="text-slate-500 block text-xs">Transportadora</span>
@@ -328,7 +328,7 @@ export default function OrderHistory() {
                                     <p className="text-sm font-medium text-slate-700 mb-2 mt-2">
                                         Detalhes do Pagamento:
                                     </p>
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                                         <div>
                                             <span className="text-slate-500 block text-xs">Método</span>
                                             <span className="font-medium text-slate-900 capitalize">

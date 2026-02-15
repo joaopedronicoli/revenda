@@ -36,13 +36,13 @@ export default function OrderReview() {
     const userCommissionBalance = user?.commission_balance || 0
 
     useEffect(() => {
-        loadAddressesAndCreateOrder()
-    }, [])
+        if (user?.id) loadAddressesAndCreateOrder()
+    }, [user?.id])
 
     const loadAddressesAndCreateOrder = async () => {
         try {
             setLoading(true)
-            const allAddresses = await getAddresses(user.id)
+            const allAddresses = await getAddresses(user?.id)
             setAddresses(allAddresses)
 
             // Selecionar endereco padrao
@@ -375,7 +375,7 @@ export default function OrderReview() {
             {/* Error Modal */}
             {error && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6">
                         <div className="flex items-start gap-4">
                             <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
                                 <AlertCircle className="w-6 h-6 text-red-600" />
@@ -408,7 +408,7 @@ export default function OrderReview() {
             <div className="max-w-4xl mx-auto px-4">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
                         {resumeOrder ? 'Continuar Pagamento' : 'Revisar Pedido'}
                     </h1>
                     <p className="text-slate-600">
@@ -455,7 +455,7 @@ export default function OrderReview() {
                                     <p className="text-slate-600 mb-4">Voce ainda nao tem enderecos cadastrados.</p>
                                     <button
                                         onClick={() => navigate('/profile?tab=addresses')}
-                                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+                                        className="w-full sm:w-auto px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
                                     >
                                         Cadastrar Endereco
                                     </button>
@@ -511,14 +511,14 @@ export default function OrderReview() {
                             <div className="space-y-2">
                                 {user?.documentType === 'cnpj' ? (
                                     <>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-600">Razao Social:</span>
-                                            <span className="font-medium text-slate-900">
+                                        <div className="flex flex-col sm:flex-row sm:justify-between text-sm gap-0.5 sm:gap-2">
+                                            <span className="text-slate-600 shrink-0">Razao Social:</span>
+                                            <span className="font-medium text-slate-900 break-words min-w-0">
                                                 {user?.companyName || 'Nao informado'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-600">CNPJ:</span>
+                                        <div className="flex flex-col sm:flex-row sm:justify-between text-sm gap-0.5 sm:gap-2">
+                                            <span className="text-slate-600 shrink-0">CNPJ:</span>
                                             <span className="font-medium text-slate-900">
                                                 {user?.cnpj}
                                             </span>
@@ -526,14 +526,14 @@ export default function OrderReview() {
                                     </>
                                 ) : (
                                     <>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-600">Nome:</span>
-                                            <span className="font-medium text-slate-900">
+                                        <div className="flex flex-col sm:flex-row sm:justify-between text-sm gap-0.5 sm:gap-2">
+                                            <span className="text-slate-600 shrink-0">Nome:</span>
+                                            <span className="font-medium text-slate-900 break-words min-w-0">
                                                 {user?.name || 'Nao informado'}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-slate-600">CPF:</span>
+                                        <div className="flex flex-col sm:flex-row sm:justify-between text-sm gap-0.5 sm:gap-2">
+                                            <span className="text-slate-600 shrink-0">CPF:</span>
                                             <span className="font-medium text-slate-900">
                                                 {user?.cpf}
                                             </span>
@@ -550,8 +550,8 @@ export default function OrderReview() {
                                 Cupom de Desconto
                             </h2>
                             {couponResult ? (
-                                <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
-                                    <div>
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-green-50 p-3 rounded-lg gap-2">
+                                    <div className="min-w-0">
                                         <span className="text-sm font-medium text-green-800">
                                             Cupom <strong>{couponCode.toUpperCase()}</strong> aplicado!
                                         </span>
@@ -561,7 +561,7 @@ export default function OrderReview() {
                                     </div>
                                     <button
                                         onClick={removeCoupon}
-                                        className="text-sm text-red-500 hover:text-red-700"
+                                        className="text-sm text-red-500 hover:text-red-700 shrink-0 self-start sm:self-center"
                                     >
                                         Remover
                                     </button>
@@ -600,13 +600,13 @@ export default function OrderReview() {
                                     Saldo disponivel: <strong className="text-green-600">{formatCurrency(userCommissionBalance)}</strong>
                                 </p>
                                 {commissionCredit > 0 ? (
-                                    <div className="flex items-center justify-between bg-green-50 p-3 rounded-lg">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-green-50 p-3 rounded-lg gap-2">
                                         <span className="text-sm text-green-800">
                                             Credito aplicado: <strong>{formatCurrency(commissionCredit)}</strong>
                                         </span>
                                         <button
                                             onClick={() => setCommissionCredit(0)}
-                                            className="text-sm text-red-500 hover:text-red-700"
+                                            className="text-sm text-red-500 hover:text-red-700 shrink-0 self-start sm:self-center"
                                         >
                                             Remover
                                         </button>
@@ -644,7 +644,7 @@ export default function OrderReview() {
                                     </p>
                                     <button
                                         onClick={() => navigate('/complete-profile?returnTo=/order-review')}
-                                        className="px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                                        className="w-full sm:w-auto px-6 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-colors"
                                     >
                                         Completar cadastro
                                     </button>
@@ -691,12 +691,12 @@ export default function OrderReview() {
                             </h2>
                             <div className="space-y-3">
                                 {displayItems.map(item => (
-                                    <div key={item.id} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
-                                        <div>
-                                            <p className="font-medium text-slate-900">{item.name}</p>
+                                    <div key={item.id} className="flex justify-between items-center py-2 border-b border-slate-100 last:border-0 gap-2">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="font-medium text-slate-900 break-words">{item.name}</p>
                                             <p className="text-sm text-slate-600">Quantidade: {item.quantity}</p>
                                         </div>
-                                        <p className="font-semibold text-slate-900">
+                                        <p className="font-semibold text-slate-900 shrink-0">
                                             {formatCurrency((parseFloat(item.tablePrice) || 0) * (item.quantity || 0))}
                                         </p>
                                     </div>
@@ -791,7 +791,7 @@ export default function OrderReview() {
 
                             <div className="flex justify-between items-center mb-6">
                                 <span className="text-lg font-semibold text-slate-900">Total</span>
-                                <span className="text-2xl font-bold text-primary">
+                                <span className="text-xl sm:text-2xl font-bold text-primary">
                                     {formatCurrency(Math.max(summary.totalWithDiscount - parseFloat(couponResult?.discountAmount || 0), 1))}
                                 </span>
                             </div>

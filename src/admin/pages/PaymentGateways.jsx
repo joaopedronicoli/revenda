@@ -524,14 +524,14 @@ export default function PaymentGateways() {
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Gateways de Pagamento</h1>
                     <p className="text-sm text-slate-600 mt-1">Gerencie empresas faturadoras e gateways de pagamento por estado</p>
                 </div>
                 <button
                     onClick={() => { setShowCompanyForm(true); setEditingCompany(null) }}
-                    className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-2"
+                    className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 flex items-center gap-2 shrink-0"
                 >
                     <Plus size={16} /> Nova Empresa
                 </button>

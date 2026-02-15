@@ -31,8 +31,8 @@ export default function CartFooter() {
     const userLevel = user?.level || 'bronze'
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-2xl z-40">
-            <div className="max-w-7xl mx-auto px-4 py-4">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-2xl z-40 pb-safe">
+            <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4">
                 {/* Approval Warning */}
                 {!isApproved && (
                     <div className="bg-yellow-100 px-4 py-2 text-center text-xs sm:text-sm border-b border-yellow-200 mb-4 rounded-lg">
@@ -70,26 +70,26 @@ export default function CartFooter() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     {/* Cart Summary */}
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2 sm:gap-6">
                         <div>
-                            <p className="text-sm text-slate-600">Total do Pedido</p>
-                            <p className="text-2xl font-bold text-primary">
+                            <p className="text-xs sm:text-sm text-slate-600">Total do Pedido</p>
+                            <p className="text-lg sm:text-2xl font-bold text-primary">
                                 {formatPrice(totalWithDiscount)}
                             </p>
                         </div>
 
-                        <div className="h-12 w-px bg-slate-200" />
+                        <div className="h-10 sm:h-12 w-px bg-slate-200" />
 
                         <div>
-                            <p className="text-sm text-slate-600">Itens no Carrinho</p>
-                            <p className="text-xl font-semibold text-slate-800">
+                            <p className="text-xs sm:text-sm text-slate-600">Itens</p>
+                            <p className="text-base sm:text-xl font-semibold text-slate-800">
                                 {itemCount} {itemCount === 1 ? 'produto' : 'produtos'}
                             </p>
                         </div>
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 w-full sm:w-auto">
                         {/* Botão Limpar - Discreto */}
                         <button
                             onClick={() => {
@@ -106,7 +106,7 @@ export default function CartFooter() {
                             onClick={() => navigate('/order-review')}
                             disabled={!canCheckout}
                             className={clsx(
-                                "flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-md",
+                                "flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all shadow-md w-full sm:w-auto",
                                 canCheckout
                                     ? "bg-primary text-white hover:bg-primary-dark hover:shadow-lg hover:scale-105"
                                     : "bg-slate-200 text-slate-400 cursor-not-allowed"

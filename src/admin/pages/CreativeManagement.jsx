@@ -124,7 +124,7 @@ export default function CreativeManagement() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {creatives.map(creative => {
                         const TypeIcon = typeIcons[creative.type] || Image
                         return (
@@ -188,7 +188,7 @@ export default function CreativeManagement() {
             {/* Modal */}
             {showModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-lg w-full">
+                    <div className="bg-white rounded-xl max-w-lg w-full mx-4">
                         <div className="p-6 border-b border-slate-200 flex items-center justify-between">
                             <h2 className="text-xl font-bold text-slate-900">
                                 {editing ? 'Editar Material' : 'Adicionar Material'}

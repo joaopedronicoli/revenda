@@ -184,7 +184,7 @@ export default function ProfileEditor() {
 
             <div className="bg-white rounded-xl p-8 border border-slate-200">
                 {/* Avatar */}
-                <div className="flex items-center gap-6 mb-8 pb-8 border-b border-slate-200">
+                <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-6 mb-8 pb-8 border-b border-slate-200">
                     <div className="relative">
                         <div className="w-24 h-24 rounded-full bg-slate-200 overflow-hidden">
                             {avatarUrl ? (
@@ -366,7 +366,7 @@ export default function ProfileEditor() {
             {/* Delete Confirmation Modal */}
             {showDeleteConfirm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-2xl">
+                    <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
                         <h3 className="text-lg font-bold text-red-600 mb-2">Excluir Conta</h3>
                         <p className="text-sm text-slate-600 mb-4">
                             Esta ação é irreversível. Todos os seus dados serão excluídos permanentemente.

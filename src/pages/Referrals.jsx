@@ -89,7 +89,7 @@ export default function Referrals() {
 
                     <div className="flex items-center gap-3 mb-4">
                         <div className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-                            <p className="text-2xl font-bold text-primary tracking-widest text-center">
+                            <p className="text-lg sm:text-2xl font-bold text-primary tracking-wide sm:tracking-widest text-center">
                                 {referralCode || '---'}
                             </p>
                         </div>
@@ -102,16 +102,16 @@ export default function Referrals() {
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch gap-2">
                         <input
                             type="text"
                             readOnly
                             value={shareLink}
-                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600"
+                            className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 min-w-0"
                         />
                         <button
                             onClick={shareNative}
-                            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2"
+                            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
                         >
                             <Share2 className="w-4 h-4" />
                             Compartilhar
@@ -166,19 +166,19 @@ export default function Referrals() {
                             <table className="w-full">
                                 <thead className="bg-slate-50">
                                     <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Compras</th>
+                                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
+                                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Compras</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
                                     {referrals.map((ref) => (
                                         <tr key={ref.id} className="hover:bg-slate-50">
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-slate-900">
                                                 {ref.name || ref.email}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-500">
                                                 {new Date(ref.created_at).toLocaleDateString('pt-BR')}
                                             </td>
                                             <td className="px-6 py-4">
@@ -191,7 +191,7 @@ export default function Referrals() {
                                                     {ref.status === 'active' ? 'Ativa' : 'Pendente'}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-600">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600">
                                                 {ref.order_count || 0}
                                             </td>
                                         </tr>

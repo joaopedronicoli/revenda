@@ -67,25 +67,25 @@ export default function Rankings() {
             <table className="w-full">
                 <thead className="bg-slate-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedidos</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Vendas</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedidos</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Vendas</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                     {data.map((item, index) => (
                         <tr key={item.id || index} className="hover:bg-slate-50">
-                            <td className="px-6 py-4">{renderPosition(index + 1)}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">{renderPosition(index + 1)}</td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <p className="text-sm font-medium text-slate-900">{item.name}</p>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <LevelBadge level={item.level} />
                             </td>
-                            <td className="px-6 py-4 text-sm text-slate-600">{item.order_count}</td>
-                            <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600">{item.order_count}</td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-slate-900">
                                 {formatCurrency(item.total_sales)}
                             </td>
                         </tr>
@@ -100,25 +100,25 @@ export default function Rankings() {
             <table className="w-full">
                 <thead className="bg-slate-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Indicacoes</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vendas Geradas</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comissoes</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Indicacoes</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Vendas Geradas</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Comissoes</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                     {data.map((item, index) => (
                         <tr key={item.id || index} className="hover:bg-slate-50">
-                            <td className="px-6 py-4">{renderPosition(index + 1)}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">{renderPosition(index + 1)}</td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <p className="text-sm font-medium text-slate-900">{item.name}</p>
                             </td>
-                            <td className="px-6 py-4 text-sm text-slate-600">{item.referral_count}</td>
-                            <td className="px-6 py-4 text-sm text-slate-600">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600">{item.referral_count}</td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600">
                                 {formatCurrency(item.total_sales || 0)}
                             </td>
-                            <td className="px-6 py-4 text-sm font-medium text-green-600">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-green-600">
                                 {formatCurrency(item.total_commissions || 0)}
                             </td>
                         </tr>
@@ -133,27 +133,27 @@ export default function Rankings() {
             <table className="w-full">
                 <thead className="bg-slate-50">
                     <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pontos</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Conquistas</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">#</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Pontos</th>
+                        <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Conquistas</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                     {data.map((item, index) => (
                         <tr key={item.id || index} className="hover:bg-slate-50">
-                            <td className="px-6 py-4">{renderPosition(index + 1)}</td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">{renderPosition(index + 1)}</td>
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <p className="text-sm font-medium text-slate-900">{item.name}</p>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <LevelBadge level={item.level} />
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                 <PointsDisplay points={item.points} size="sm" />
                             </td>
-                            <td className="px-6 py-4 text-sm text-slate-600">
+                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600">
                                 {item.achievement_count || 0}
                             </td>
                         </tr>

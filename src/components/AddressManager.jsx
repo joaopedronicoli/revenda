@@ -220,8 +220,8 @@ export default function AddressManager() {
                             {loadingCep && <p className="text-xs text-primary mt-1">Buscando endereço pelo CEP...</p>}
                         </div>
 
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="sm:col-span-2">
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Rua *</label>
                                 <input
                                     type="text"
@@ -257,7 +257,7 @@ export default function AddressManager() {
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Bairro *</label>
                                 <input

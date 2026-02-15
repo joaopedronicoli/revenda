@@ -44,11 +44,11 @@ function StatCard({ title, value, icon: Icon, color, subtitle, trend }) {
     }
 
     return (
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200">
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 min-w-0">
             <div className="flex items-start justify-between">
-                <div>
+                <div className="min-w-0">
                     <p className="text-sm text-slate-500 font-medium">{title}</p>
-                    <p className="text-3xl font-bold text-slate-900 mt-1">{value}</p>
+                    <p className="text-2xl sm:text-3xl font-bold text-slate-900 mt-1 truncate">{value}</p>
                     {subtitle && (
                         <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
                     )}
@@ -400,18 +400,18 @@ export default function AdminDashboard() {
                     <table className="w-full">
                         <thead className="bg-slate-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Posição</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Contato</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Gasto</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedidos</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Última Compra</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Posição</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Contato</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Total Gasto</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Pedidos</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Última Compra</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
                             {topCustomers.map((customer, index) => (
                                 <tr key={customer.user_id} className="hover:bg-slate-50">
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                                         <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
                                             index === 0 ? 'bg-yellow-100 text-yellow-800' :
                                             index === 1 ? 'bg-slate-200 text-slate-700' :
@@ -421,33 +421,33 @@ export default function AdminDashboard() {
                                             {index + 1}
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <p className="text-sm font-medium text-slate-900">{customer.name}</p>
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4">
+                                        <p className="text-sm font-medium text-slate-900 truncate max-w-[200px]">{customer.name}</p>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <p className="text-sm text-slate-600">{customer.email}</p>
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
+                                        <p className="text-sm text-slate-600 truncate max-w-[200px]">{customer.email}</p>
                                         {customer.whatsapp && (
                                             <p className="text-xs text-slate-500">{customer.whatsapp}</p>
                                         )}
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                                         <p className="text-sm font-bold text-green-600">
                                             {formatCurrency(customer.totalSpent)}
                                         </p>
                                     </td>
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
                                         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                             {customer.orderCount} pedido{customer.orderCount !== 1 ? 's' : ''}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-4 text-sm text-slate-600">
+                                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-600 hidden md:table-cell">
                                         {new Date(customer.lastPurchase).toLocaleDateString('pt-BR')}
                                     </td>
                                 </tr>
                             ))}
                             {topCustomers.length === 0 && (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                                    <td colSpan={6} className="px-3 sm:px-6 py-12 text-center text-slate-400">
                                         Nenhum cliente com compras ainda
                                     </td>
                                 </tr>
@@ -629,10 +629,10 @@ export default function AdminDashboard() {
                     <table className="w-full">
                         <thead className="bg-slate-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedido</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedido</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Data</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
+                                <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
@@ -641,16 +641,16 @@ export default function AdminDashboard() {
                                 const StatusIcon = status.icon
                                 return (
                                     <tr key={order.id} className="hover:bg-slate-50">
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-slate-900">
                                             {order.order_number || `#${order.id}`}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-slate-500">
+                                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-500 hidden md:table-cell">
                                             {new Date(order.created_at).toLocaleDateString('pt-BR')}
                                         </td>
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-slate-900">
                                             {formatCurrency(order.total)}
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-3 sm:px-6 py-3 sm:py-4">
                                             <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                                 <StatusIcon className="w-3 h-3" />
                                                 {status.label}
@@ -661,7 +661,7 @@ export default function AdminDashboard() {
                             })}
                             {recentOrders.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                                    <td colSpan={4} className="px-3 sm:px-6 py-12 text-center text-slate-400">
                                         Nenhum pedido encontrado
                                     </td>
                                 </tr>

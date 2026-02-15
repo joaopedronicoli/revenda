@@ -171,14 +171,14 @@ export default function OrdersManagement() {
                         <table className="w-full">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedido</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Pagamento</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Canal</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Pedido</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliente</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Data</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Pagamento</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Canal</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Ações</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -187,7 +187,7 @@ export default function OrdersManagement() {
                                     const StatusIcon = status.icon
                                     return (
                                         <tr key={order.id} className="hover:bg-slate-50">
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <p className="text-sm font-medium text-slate-900">
                                                     {order.order_number || `#${order.id}`}
                                                 </p>
@@ -197,15 +197,15 @@ export default function OrdersManagement() {
                                                     </p>
                                                 )}
                                             </td>
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-medium text-slate-900">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                                                <p className="text-sm font-medium text-slate-900 truncate max-w-[200px]">
                                                     {order.details?.user_name || '-'}
                                                 </p>
-                                                <p className="text-xs text-slate-500">
+                                                <p className="text-xs text-slate-500 truncate max-w-[200px]">
                                                     {order.details?.user_email || '-'}
                                                 </p>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-500 hidden md:table-cell">
                                                 {new Date(order.created_at).toLocaleDateString('pt-BR', {
                                                     day: '2-digit',
                                                     month: '2-digit',
@@ -214,14 +214,14 @@ export default function OrdersManagement() {
                                                     minute: '2-digit'
                                                 })}
                                             </td>
-                                            <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm font-medium text-slate-900">
                                                 {formatCurrency(order.total)}
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500 capitalize">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-500 capitalize hidden md:table-cell">
                                                 {order.payment_method === 'pix' ? 'PIX' : 'Cartão'}
                                                 {order.installments > 1 && ` (${order.installments}x)`}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
                                                 {(() => {
                                                     const ch = order.tracking_data?.pe_channel || null
                                                     const cfg = ch ? channelConfig[ch] : null
@@ -234,13 +234,13 @@ export default function OrdersManagement() {
                                                     )
                                                 })()}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                                     <StatusIcon className="w-3 h-3" />
                                                     {status.label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <button
                                                     onClick={() => setSelectedOrder(order)}
                                                     className="p-2 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-lg transition-colors"
@@ -268,7 +268,7 @@ export default function OrdersManagement() {
 
                 return (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedOrder(null)}>
-                    <div className="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         {/* Header */}
                         <div className="p-6 border-b border-slate-200 bg-slate-50 rounded-t-xl">
                             <div className="flex items-start justify-between">

@@ -202,10 +202,10 @@ export default function PixPayment({ pixData, orderId, onPaymentConfirmed, gatew
                         <img
                             src={qrCodeUrl}
                             alt="QR Code PIX"
-                            className="w-64 h-64"
+                            className="w-48 h-48 sm:w-64 sm:h-64"
                         />
                     ) : (
-                        <div className="w-64 h-64 flex items-center justify-center bg-slate-100 rounded-lg">
+                        <div className="w-48 h-48 sm:w-64 sm:h-64 flex items-center justify-center bg-slate-100 rounded-lg">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
                         </div>
                     )}
@@ -263,7 +263,7 @@ export default function PixPayment({ pixData, orderId, onPaymentConfirmed, gatew
 
                 <div className="flex items-start gap-4">
                     <div className="relative flex-shrink-0">
-                        <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center">
+                        <div className="w-10 h-10 sm:w-14 sm:h-14 bg-orange-100 rounded-full flex items-center justify-center">
                             {/* Ampulheta que vira */}
                             <Hourglass
                                 className={`w-7 h-7 text-orange-600 transition-transform duration-500 ${hourglassFlip ? 'rotate-180' : 'rotate-0'}`}
@@ -299,7 +299,7 @@ export default function PixPayment({ pixData, orderId, onPaymentConfirmed, gatew
             {/* Instruções - Modernizadas */}
             <div className="bg-white border border-slate-200 rounded-xl p-5">
                 <h5 className="font-medium text-slate-800 mb-4 text-center">Como pagar</h5>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-start gap-3">
                         <div className="w-6 h-6 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                             <span className="text-xs font-bold text-primary">1</span>

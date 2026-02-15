@@ -60,20 +60,20 @@ export default function Confirmation() {
                 <CheckCircle size={40} />
             </div>
 
-            <h2 className="text-3xl font-bold text-slate-900 mb-2">Pedido Confirmado!</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">Pedido Confirmado!</h2>
             <p className="text-slate-600 max-w-md mx-auto mb-6">
                 Seu pedido foi recebido e esta sendo processado.
             </p>
 
             {order && (
-                <div className="bg-white border border-slate-200 rounded-xl p-6 w-full max-w-sm mb-6 text-left">
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 w-full max-w-sm mb-6 text-left">
                     <div className="flex items-center gap-3 mb-4">
                         <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
                             <ShoppingBag className="w-5 h-5 text-green-600" />
                         </div>
                         <div>
                             <p className="text-sm font-medium text-slate-800">Pedido</p>
-                            <p className="text-xs text-slate-500 font-mono">
+                            <p className="text-xs text-slate-500 font-mono break-all">
                                 {order.order_number || `#${String(order.id).slice(0, 8)}`}
                             </p>
                         </div>

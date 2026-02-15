@@ -16,7 +16,8 @@ import {
     BarChart3,
     Image,
     CreditCard,
-    Plug
+    Plug,
+    X
 } from 'lucide-react'
 
 const menuItems = [
@@ -94,7 +95,7 @@ const menuItems = [
         path: '/admin/templates',
         adminOnly: true
     },
-{
+    {
         title: 'Configuracoes',
         icon: Settings,
         path: '/admin/settings',
@@ -102,7 +103,7 @@ const menuItems = [
     }
 ]
 
-export default function AdminSidebar({ collapsed, onCollapse }) {
+export default function AdminSidebar({ collapsed, onCollapse, onCloseMobile }) {
     const { user, userRole, isAdmin, logout } = useAuth()
 
     const filteredItems = menuItems.filter(item => {
@@ -111,7 +112,7 @@ export default function AdminSidebar({ collapsed, onCollapse }) {
     })
 
     return (
-        <aside className={`bg-slate-900 text-white transition-all duration-300 flex flex-col ${collapsed ? 'w-16' : 'w-64'}`}>
+        <aside className={`bg-slate-900 text-white transition-all duration-300 flex flex-col h-full ${collapsed ? 'w-16' : 'w-64'}`}>
             {/* Header */}
             <div className="p-4 border-b border-slate-700 flex items-center justify-between">
                 {!collapsed && (
@@ -123,11 +124,19 @@ export default function AdminSidebar({ collapsed, onCollapse }) {
                         </div>
                     </div>
                 )}
+                {/* Close button on mobile, collapse on desktop */}
                 <button
-                    onClick={() => onCollapse(!collapsed)}
+                    onClick={() => {
+                        if (window.innerWidth < 768) {
+                            onCloseMobile?.()
+                        } else {
+                            onCollapse(!collapsed)
+                        }
+                    }}
                     className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
                 >
-                    <ChevronLeft className={`w-5 h-5 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
+                    <span className="md:hidden"><X className="w-5 h-5" /></span>
+                    <span className="hidden md:block"><ChevronLeft className={`w-5 h-5 transition-transform ${collapsed ? 'rotate-180' : ''}`} /></span>
                 </button>
             </div>
 
@@ -138,6 +147,7 @@ export default function AdminSidebar({ collapsed, onCollapse }) {
                         key={item.path}
                         to={item.path}
                         end={item.exact}
+                        onClick={() => onCloseMobile?.()}
                         className={({ isActive }) =>
                             `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isActive
                                 ? 'bg-primary text-white'
@@ -162,6 +172,7 @@ export default function AdminSidebar({ collapsed, onCollapse }) {
                 <div className="flex gap-2">
                     <NavLink
                         to="/"
+                        onClick={() => onCloseMobile?.()}
                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
                     >
                         <ShoppingBag className="w-4 h-4" />

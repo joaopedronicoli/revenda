@@ -301,7 +301,7 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
                 </div>
 
                 <button type="submit" disabled={loading || !stripeReady}
-                    className="w-full bg-primary text-white py-4 rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                    className="w-full bg-primary text-white py-3 sm:py-4 rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                     {loading ? (
                         <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>Processando...</>
                     ) : (
@@ -344,7 +344,7 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
                 {errors.holder && <p className="text-red-500 text-xs mt-1">{errors.holder}</p>}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">Validade</label>
                     <input type="text" name="expiry" value={formData.expiry} onChange={handleChange}
@@ -374,7 +374,7 @@ export default function CreditCardForm({ amount, onSubmit, loading, gatewayType,
             </div>
 
             <button type="submit" disabled={loading || (gatewayType === 'mercadopago' && !mpReady)}
-                className="w-full bg-primary text-white py-4 rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                className="w-full bg-primary text-white py-3 sm:py-4 rounded-lg font-semibold hover:bg-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 {loading ? (
                     <><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>Processando...</>
                 ) : (

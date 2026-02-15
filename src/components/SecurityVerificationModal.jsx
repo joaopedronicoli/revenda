@@ -49,7 +49,7 @@ export default function SecurityVerificationModal({ type, newValue, onSuccess, o
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full p-6 relative">
+            <div className="bg-white rounded-2xl max-w-md w-full mx-4 p-6 relative">
                 <button
                     onClick={onCancel}
                     className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"

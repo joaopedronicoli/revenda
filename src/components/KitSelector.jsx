@@ -47,7 +47,7 @@ export default function KitSelector({ selectedKit, onSelectKit }) {
                 O kit inicial e obrigatorio no primeiro pedido. Ele inclui produtos para demonstracao e inicio da sua jornada como revendedora.
             </p>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
                 {kits.map((kit) => {
                     const isSelected = selectedKit?.id === kit.id
                     const isBestValue = kit.slug === 'completo'

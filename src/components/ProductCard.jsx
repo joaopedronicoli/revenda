@@ -78,13 +78,13 @@ export default function ProductCard({ product }) {
                 )}
                 {/* Kit Badge */}
                 {product.isKit && (
-                    <div className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] uppercase font-bold px-2 py-1 rounded flex items-center gap-1">
+                    <div className="absolute top-2 left-2 bg-purple-600 text-white text-[10px] sm:text-xs uppercase font-bold px-2 py-1 rounded flex items-center gap-1">
                         <Package size={10} /> Kit Inicial
                     </div>
                 )}
                 {/* Special Discount Badge */}
                 {hasSpecialDiscount && !product.isKit && (
-                    <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] uppercase font-bold px-2 py-1 rounded">
+                    <div className="absolute top-2 left-2 bg-red-500 text-white text-[10px] sm:text-xs uppercase font-bold px-2 py-1 rounded">
                         Oferta {Math.round((product.special_discount || discountModelat) * 100)}%
                     </div>
                 )}

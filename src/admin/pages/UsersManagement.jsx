@@ -287,13 +287,13 @@ export default function UsersManagement() {
                         <table className="w-full">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Usuario</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Contato</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Role</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Ultima Compra</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Usuario</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Contato</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nivel</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Role</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Ultima Compra</th>
+                                    <th className="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -305,47 +305,47 @@ export default function UsersManagement() {
                                     const level = levelConfig[user.level] || levelConfig.bronze
                                     return (
                                         <tr key={user.id} className="hover:bg-slate-50">
-                                            <td className="px-6 py-4">
-                                                <p className="text-sm font-medium text-slate-900">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
+                                                <p className="text-sm font-medium text-slate-900 truncate max-w-[200px]">
                                                     {user.name || '-'}
                                                 </p>
                                                 <p className="text-xs text-slate-500">
                                                     {user.cpf || user.cnpj || '-'}
                                                 </p>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
                                                 <div className="flex items-center gap-1 text-sm text-slate-600">
                                                     <Mail className="w-3 h-3" />
-                                                    {user.email || '-'}
+                                                    <span className="truncate max-w-[200px]">{user.email || '-'}</span>
                                                 </div>
                                                 <div className="flex items-center gap-1 text-xs text-slate-500">
                                                     <Phone className="w-3 h-3" />
                                                     {user.telefone || '-'}
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${level.color}`}>
                                                     <Shield className="w-3 h-3" />
                                                     {level.label} ({level.discount})
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${approval.color}`}>
                                                     <ApprovalIcon className="w-3 h-3" />
                                                     {approval.label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 hidden md:table-cell">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${roleInfo.color}`}>
                                                     {roleInfo.label}
                                                 </span>
                                             </td>
-                                            <td className="px-6 py-4 text-sm text-slate-500">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4 text-sm text-slate-500 hidden md:table-cell">
                                                 {user.last_purchase_date
                                                     ? new Date(user.last_purchase_date).toLocaleDateString('pt-BR')
                                                     : '-'}
                                             </td>
-                                            <td className="px-6 py-4">
+                                            <td className="px-3 sm:px-6 py-3 sm:py-4">
                                                 <button
                                                     onClick={() => { setSelectedUser(user); setShowRejectForm(false); setRejectionReason(''); setShowLevelHistory(false); setPendingLevel(null); setReferralInput(''); setReferralError(''); }}
                                                     className="text-sm font-medium text-primary hover:text-primary-dark"
@@ -365,7 +365,7 @@ export default function UsersManagement() {
             {/* User Detail Modal */}
             {selectedUser && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
                         <div className="p-6 border-b border-slate-200">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold text-slate-900">
@@ -609,7 +609,7 @@ export default function UsersManagement() {
             {/* Add User Modal */}
             {showAddUser && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-md w-full">
+                    <div className="bg-white rounded-xl max-w-md w-full mx-4">
                         <div className="p-6 border-b border-slate-200">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold text-slate-900">Adicionar Usuario</h2>

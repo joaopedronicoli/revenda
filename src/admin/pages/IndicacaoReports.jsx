@@ -86,7 +86,7 @@ export default function IndicacaoReports() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
                         <BarChart3 className="w-6 h-6" />
@@ -97,7 +97,7 @@ export default function IndicacaoReports() {
                 <button
                     onClick={exportCSV}
                     disabled={exporting}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 shrink-0"
                 >
                     <Download className="w-4 h-4" />
                     {exporting ? 'Exportando...' : 'Exportar CSV'}
@@ -188,13 +188,13 @@ export default function IndicacaoReports() {
                         <table className="w-full">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Cliques</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Conversoes</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Taxa</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Comissoes</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Payouts</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Email</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Cliques</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-medium text-slate-500 uppercase">Conversoes</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Taxa</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-medium text-slate-500 uppercase">Comissoes</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-right text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Payouts</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -204,15 +204,15 @@ export default function IndicacaoReports() {
                                     const rate = clicks > 0 ? ((conversions / clicks) * 100).toFixed(1) : '0.0'
                                     return (
                                         <tr key={affiliate.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-4 text-sm font-medium text-slate-900">{affiliate.name || '-'}</td>
-                                            <td className="px-4 py-4 text-sm text-slate-600">{affiliate.email}</td>
-                                            <td className="px-4 py-4 text-sm text-right text-slate-600">{clicks}</td>
-                                            <td className="px-4 py-4 text-sm text-right text-slate-600">{conversions}</td>
-                                            <td className="px-4 py-4 text-sm text-right text-slate-600">{rate}%</td>
-                                            <td className="px-4 py-4 text-sm text-right font-medium text-green-700">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm font-medium text-slate-900 truncate max-w-[200px]">{affiliate.name || '-'}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600 hidden md:table-cell">{affiliate.email}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-right text-slate-600 hidden md:table-cell">{clicks}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-right text-slate-600">{conversions}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-right text-slate-600 hidden md:table-cell">{rate}%</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-right font-medium text-green-700">
                                                 {formatCurrency(affiliate.total_commissions || 0)}
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-right font-medium text-blue-700">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-right font-medium text-blue-700 hidden md:table-cell">
                                                 {formatCurrency(affiliate.total_payouts || 0)}
                                             </td>
                                         </tr>

@@ -244,7 +244,7 @@ export default function CompleteProfile() {
         <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-8 font-sans">
             <div className="max-w-2xl w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-8 py-6 text-center border-b-2 border-primary">
+                <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-4 sm:px-8 py-6 text-center border-b-2 border-primary">
                     <h2 className="text-2xl font-bold text-primary">Complete seu Perfil</h2>
                     <p className="text-slate-600 text-sm mt-1">
                         Olá, {user?.name}! Precisamos de alguns dados para continuar.
@@ -252,7 +252,7 @@ export default function CompleteProfile() {
                 </div>
 
                 {/* Progress Steps */}
-                <div className="flex items-center justify-center gap-4 py-6 border-b border-slate-200 bg-white">
+                <div className="flex items-center justify-center gap-2 sm:gap-4 py-6 border-b border-slate-200 bg-white">
                     {[1, 2, 3].map((s) => (
                         <div key={s} className="flex items-center gap-2">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all shadow-sm ${step >= s
@@ -261,12 +261,12 @@ export default function CompleteProfile() {
                                 }`}>
                                 {step > s ? <Check size={18} /> : s}
                             </div>
-                            {s < 3 && <div className={`w-16 h-1 rounded-full transition-all ${step > s ? 'bg-primary' : 'bg-slate-200'}`} />}
+                            {s < 3 && <div className={`w-8 sm:w-16 h-1 rounded-full transition-all ${step > s ? 'bg-primary' : 'bg-slate-200'}`} />}
                         </div>
                     ))}
                 </div>
 
-                <div className="p-8">
+                <div className="p-4 sm:p-8">
                     {error && (
                         <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-sm">
                             {error}
@@ -332,7 +332,7 @@ export default function CompleteProfile() {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Número</label>
                                         <input
@@ -369,7 +369,7 @@ export default function CompleteProfile() {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Cidade</label>
                                         <input
@@ -621,7 +621,7 @@ export default function CompleteProfile() {
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Tem clientes ativos?</label>
                                         <select name="survey.hasClients" value={formData.survey.hasClients} onChange={handleChange} className="w-full border rounded-lg p-2" required>

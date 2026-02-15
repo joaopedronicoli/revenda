@@ -241,7 +241,7 @@ export default function PendingApproval() {
 
             {showApprovedModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 px-4 animate-fadeIn">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 md:p-12 max-w-md w-full transform animate-scaleIn">
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-8 md:p-12 max-w-md w-full mx-4 transform animate-scaleIn">
                         <div className="flex justify-center mb-6">
                             <div className="relative">
                                 <div className="absolute inset-0 bg-green-400 rounded-full animate-ping opacity-75"></div>

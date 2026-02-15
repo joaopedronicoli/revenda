@@ -43,25 +43,25 @@ export default function ResellerDashboard() {
     const statCards = dashboard ? [
         {
             label: 'Vendas Total',
-            value: formatCurrency(dashboard.total_sales || 0),
+            value: formatCurrency(dashboard.totalSales || 0),
             icon: DollarSign,
             color: 'bg-green-50 text-green-600'
         },
         {
             label: 'Vendas do Mes',
-            value: formatCurrency(dashboard.month_sales || 0),
+            value: formatCurrency(dashboard.monthSales || 0),
             icon: TrendingUp,
             color: 'bg-blue-50 text-blue-600'
         },
         {
             label: 'Saldo Comissoes',
-            value: formatCurrency(dashboard.commission_balance || 0),
+            value: formatCurrency(dashboard.commissionBalance || 0),
             icon: DollarSign,
             color: 'bg-purple-50 text-purple-600'
         },
         {
             label: 'Indicacoes Ativas',
-            value: dashboard.active_referrals || 0,
+            value: dashboard.activeReferrals || 0,
             icon: Users,
             color: 'bg-orange-50 text-orange-600'
         },
@@ -104,14 +104,14 @@ export default function ResellerDashboard() {
                 {/* Stat Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                     {statCards.map(({ label, value, icon: Icon, color }) => (
-                        <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                        <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm min-w-0">
                             <div className="flex items-center gap-2 mb-2">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${color}`}>
                                     <Icon className="w-4 h-4" />
                                 </div>
                             </div>
-                            <p className="text-xs text-slate-500">{label}</p>
-                            <p className="text-lg font-bold text-slate-900">{value}</p>
+                            <p className="text-xs text-slate-500 truncate">{label}</p>
+                            <p className="text-base sm:text-lg font-bold text-slate-900 truncate">{value}</p>
                         </div>
                     ))}
                 </div>

@@ -174,7 +174,7 @@ export default function IndicacaoManagement() {
     return (
         <div className="space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Indicadores</h1>
                     <p className="text-slate-500">Gerencie os indicadores e suas comissoes</p>
@@ -186,7 +186,7 @@ export default function IndicacaoManagement() {
                     </div>
                     <button
                         onClick={() => setShowAddAffiliate(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shrink-0"
                     >
                         <UserPlus className="w-4 h-4" />
                         Adicionar Indicador
@@ -224,15 +224,15 @@ export default function IndicacaoManagement() {
                         <table className="w-full">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Contato</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Codigo / Link</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Tipo</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vendas</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Cliques</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Comissao</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Contato</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Codigo / Link</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Tipo</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Vendas</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Cliques</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Comissao</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -245,21 +245,21 @@ export default function IndicacaoManagement() {
 
                                     return (
                                         <tr key={affiliate.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-4">
-                                                <p className="text-sm font-medium text-slate-900">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
+                                                <p className="text-sm font-medium text-slate-900 truncate max-w-[200px]">
                                                     {affiliate.name || '-'}
                                                 </p>
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 hidden md:table-cell">
                                                 <div className="flex items-center gap-1 text-sm text-slate-600">
                                                     <Mail className="w-3 h-3 flex-shrink-0" />
-                                                    {affiliate.email || '-'}
+                                                    <span className="truncate max-w-[200px]">{affiliate.email || '-'}</span>
                                                 </div>
                                                 {affiliate.telefone && (
                                                     <p className="text-xs text-slate-400 mt-0.5">{affiliate.telefone}</p>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 hidden md:table-cell">
                                                 {affiliate.referral_code ? (
                                                     <div className="space-y-1">
                                                         <div className="flex items-center gap-1">
@@ -291,30 +291,30 @@ export default function IndicacaoManagement() {
                                                     <span className="text-xs text-slate-400">Sem codigo</span>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${type.color}`}>
                                                     {type.label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-slate-600">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600">
                                                 {affiliate.affiliate_sales_count || 0}
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-slate-600">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600 hidden md:table-cell">
                                                 {affiliate.total_clicks || 0}
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <div className="flex items-center gap-1 text-sm font-medium text-slate-900">
                                                     <DollarSign className="w-3 h-3 text-green-600" />
                                                     {formatCurrency(affiliate.commission_balance || 0)}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                                     <StatusIcon className="w-3 h-3" />
                                                     {status.label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <div className="flex items-center gap-1">
                                                     <button
                                                         onClick={() => toggleStatus(affiliate.id, affiliate.affiliate_status)}
@@ -353,7 +353,7 @@ export default function IndicacaoManagement() {
             {/* Add Indicador Modal */}
             {showAddAffiliate && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-md w-full">
+                    <div className="bg-white rounded-xl max-w-md w-full mx-4">
                         <div className="p-6 border-b border-slate-200">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-xl font-bold text-slate-900">Adicionar Indicador</h2>

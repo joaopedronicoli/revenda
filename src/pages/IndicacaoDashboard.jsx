@@ -181,29 +181,29 @@ export default function IndicacaoDashboard() {
             {/* Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {stats.map(({ label, value, icon: Icon, color }) => (
-                    <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${color}`}>
                                 <Icon className="w-4 h-4" />
                             </div>
                         </div>
-                        <p className="text-xs text-slate-500">{label}</p>
-                        <p className="text-lg font-bold text-slate-900">{value}</p>
+                        <p className="text-xs text-slate-500 truncate">{label}</p>
+                        <p className="text-base sm:text-lg font-bold text-slate-900 truncate">{value}</p>
                     </div>
                 ))}
             </div>
 
             {/* Click Stats */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {clickStatCards.map(({ label, value, icon: Icon, color }) => (
-                    <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                    <div key={label} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${color}`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${color}`}>
                                 <Icon className="w-4 h-4" />
                             </div>
                         </div>
-                        <p className="text-xs text-slate-500">{label}</p>
-                        <p className="text-lg font-bold text-slate-900">{value}</p>
+                        <p className="text-xs text-slate-500 truncate">{label}</p>
+                        <p className="text-base sm:text-lg font-bold text-slate-900">{value}</p>
                     </div>
                 ))}
             </div>
@@ -220,27 +220,29 @@ export default function IndicacaoDashboard() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch gap-2">
                     <input
                         type="text"
                         readOnly
                         value={shareLink}
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600"
+                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 min-w-0"
                     />
-                    <button
-                        onClick={copyLink}
-                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
-                    >
-                        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        {copied ? 'Copiado!' : 'Copiar'}
-                    </button>
-                    <button
-                        onClick={shareNative}
-                        className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-2"
-                    >
-                        <Share2 className="w-4 h-4" />
-                        Compartilhar
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={copyLink}
+                            className="flex-1 sm:flex-none px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                        >
+                            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                            {copied ? 'Copiado!' : 'Copiar'}
+                        </button>
+                        <button
+                            onClick={shareNative}
+                            className="flex-1 sm:flex-none px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                        >
+                            <Share2 className="w-4 h-4" />
+                            Compartilhar
+                        </button>
+                    </div>
                 </div>
             </div>
 

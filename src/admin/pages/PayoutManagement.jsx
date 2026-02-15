@@ -81,7 +81,7 @@ export default function PayoutManagement() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
+            <div className="flex flex-wrap gap-1 bg-slate-100 p-1 rounded-lg w-fit">
                 {tabs.map(tab => (
                     <button
                         key={tab.key}
@@ -123,14 +123,14 @@ export default function PayoutManagement() {
                         <table className="w-full">
                             <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Email</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Metodo</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Chave PIX</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Data</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Nome</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Email</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Valor</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Metodo</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Chave PIX</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase hidden md:table-cell">Data</th>
+                                    <th className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-slate-500 uppercase">Acoes</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
@@ -139,23 +139,23 @@ export default function PayoutManagement() {
                                     const StIcon = st.icon
                                     return (
                                         <tr key={payout.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-4 text-sm font-medium text-slate-900">{payout.user_name || '-'}</td>
-                                            <td className="px-4 py-4 text-sm text-slate-600">{payout.user_email || '-'}</td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm font-medium text-slate-900">{payout.user_name || '-'}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600 hidden md:table-cell">{payout.user_email || '-'}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <span className="text-sm font-bold text-green-700">{formatCurrency(payout.amount)}</span>
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-slate-600 uppercase">{payout.method}</td>
-                                            <td className="px-4 py-4 text-sm text-slate-600 font-mono">{payout.pix_key || '-'}</td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600 uppercase hidden md:table-cell">{payout.method}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-600 font-mono hidden md:table-cell">{payout.pix_key || '-'}</td>
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${st.color}`}>
                                                     <StIcon className="w-3 h-3" />
                                                     {st.label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-4 text-sm text-slate-500">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm text-slate-500 hidden md:table-cell">
                                                 {new Date(payout.requested_at).toLocaleDateString('pt-BR')}
                                             </td>
-                                            <td className="px-4 py-4">
+                                            <td className="px-3 sm:px-4 py-3 sm:py-4">
                                                 <div className="flex items-center gap-1">
                                                     {payout.status === 'pending' && (
                                                         <>
@@ -206,7 +206,7 @@ export default function PayoutManagement() {
             {/* Reject Modal */}
             {showRejectModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl max-w-md w-full p-6">
+                    <div className="bg-white rounded-xl max-w-md w-full mx-4 p-6">
                         <h2 className="text-xl font-bold text-slate-900 mb-4">Rejeitar Saque</h2>
                         <p className="text-sm text-slate-500 mb-4">O valor sera devolvido ao saldo do indicador.</p>
                         <div>

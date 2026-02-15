@@ -1671,14 +1671,37 @@ export default function Documentation() {
                 if (line.startsWith('- ')) {
                     return <li key={i} className="ml-6 text-slate-700">{line.slice(2)}</li>
                 }
-                // Bold
-                const boldText = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                // Inline code
-                const codeText = boldText.replace(/`(.+?)`/g, '<code class="bg-slate-100 px-1 rounded text-sm">$1</code>')
-
-                // Regular paragraph
+                // Bold e inline code — renderização segura via React (sem dangerouslySetInnerHTML)
                 if (line.trim()) {
-                    return <p key={i} className="text-slate-700 mb-2" dangerouslySetInnerHTML={{ __html: codeText }} />
+                    const parts = []
+                    let remaining = line
+                    let partKey = 0
+
+                    // Processar **bold** e `code` de forma segura
+                    const regex = /(\*\*(.+?)\*\*|`(.+?)`)/g
+                    let lastIndex = 0
+                    let match
+
+                    while ((match = regex.exec(remaining)) !== null) {
+                        // Texto antes do match
+                        if (match.index > lastIndex) {
+                            parts.push(<span key={partKey++}>{remaining.slice(lastIndex, match.index)}</span>)
+                        }
+                        if (match[2]) {
+                            // Bold
+                            parts.push(<strong key={partKey++}>{match[2]}</strong>)
+                        } else if (match[3]) {
+                            // Inline code
+                            parts.push(<code key={partKey++} className="bg-slate-100 px-1 rounded text-sm">{match[3]}</code>)
+                        }
+                        lastIndex = regex.lastIndex
+                    }
+                    // Texto restante após último match
+                    if (lastIndex < remaining.length) {
+                        parts.push(<span key={partKey++}>{remaining.slice(lastIndex)}</span>)
+                    }
+
+                    return <p key={i} className="text-slate-700 mb-2">{parts.length > 0 ? parts : remaining}</p>
                 }
                 return <br key={i} />
             })

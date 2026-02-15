@@ -18,7 +18,87 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors());
+// =============================================
+// SECURITY: Rate limiter em memória (sem dependência externa)
+// =============================================
+const rateLimitStore = new Map();
+
+function rateLimit({ windowMs = 15 * 60 * 1000, max = 100, message = 'Muitas requisicoes, tente novamente mais tarde.' } = {}) {
+    // Limpeza periódica do store
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of rateLimitStore) {
+            if (now - entry.resetTime > windowMs) rateLimitStore.delete(key);
+        }
+    }, windowMs);
+
+    return (req, res, next) => {
+        const key = req.ip + ':' + req.path;
+        const now = Date.now();
+        let entry = rateLimitStore.get(key);
+
+        if (!entry || now > entry.resetTime) {
+            entry = { count: 0, resetTime: now + windowMs };
+            rateLimitStore.set(key, entry);
+        }
+
+        entry.count++;
+
+        if (entry.count > max) {
+            return res.status(429).json({ message });
+        }
+
+        next();
+    };
+}
+
+const authRateLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,  // 15 minutos
+    max: 10,                    // máximo 10 tentativas por IP/rota
+    message: 'Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.'
+});
+
+const generalRateLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,  // 1 minuto
+    max: 60,                   // 60 req/min por IP
+    message: 'Muitas requisicoes, tente novamente em instantes.'
+});
+
+// =============================================
+// SECURITY: Headers de segurança
+// =============================================
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.removeHeader('X-Powered-By');
+    next();
+});
+
+// =============================================
+// SECURITY: CORS restritivo
+// =============================================
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    process.env.API_URL,
+    'https://revenda.pelg.com.br',
+    'https://central.pelg.com.br',
+    'https://patriciaelias.com.br'
+].filter(Boolean);
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Permitir requests sem origin (mobile apps, curl, server-to-server)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        callback(new Error('Bloqueado pelo CORS'));
+    },
+    credentials: true
+}));
 app.use(express.json({
     limit: '15mb',
     verify: (req, res, buf) => {
@@ -84,7 +164,7 @@ const authenticateToken = async (req, res, next) => {
     if (!token) return res.sendStatus(401);
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
         let { rows } = await db.query(
             'SELECT * FROM users WHERE central_user_id = $1',
@@ -691,8 +771,9 @@ app.get('/', (req, res) => {
 // =============================================
 
 app.post('/users/sync', authenticateToken, async (req, res) => {
+    // SECURITY: role e approval_status removidos — apenas admins podem alterar via endpoints admin
     const { name, telefone, foto, document_type, cpf, cnpj, company_name,
-            profession, profession_other, approval_status, role } = req.body;
+            profession, profession_other } = req.body;
 
     try {
         const { rows } = await db.query(
@@ -706,12 +787,10 @@ app.post('/users/sync', authenticateToken, async (req, res) => {
                 company_name = COALESCE($7, company_name),
                 profession = COALESCE($8, profession),
                 profession_other = COALESCE($9, profession_other),
-                approval_status = COALESCE($10, approval_status),
-                role = COALESCE($11, role),
                 updated_at = NOW()
-             WHERE id = $12 RETURNING *`,
+             WHERE id = $10 RETURNING *`,
             [name, telefone, foto, document_type, cpf, cnpj, company_name,
-             profession, profession_other, approval_status, role, req.user.id]
+             profession, profession_other, req.user.id]
         );
 
         // Disparar webhook user_registered
@@ -2248,7 +2327,7 @@ app.post('/verification-codes', authenticateToken, async (req, res) => {
     const { type, new_value } = req.body;
 
     try {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const code = crypto.randomInt(100000, 999999).toString();
         const expiresAt = new Date();
         expiresAt.setMinutes(expiresAt.getMinutes() + 10);
 
@@ -2735,7 +2814,7 @@ app.post('/admin/users', authenticateToken, requireAdmin, async (req, res) => {
         }
 
         // Generate a unique central_user_id for admin-created users
-        const centralId = Math.floor(Date.now() / 1000) + Math.floor(Math.random() * 10000);
+        const centralId = Math.floor(Date.now() / 1000) + crypto.randomInt(10000, 99999);
 
         let query = `INSERT INTO users (central_user_id, name, email, telefone, role, approval_status`;
         let values = [centralId, name, email, telefone || null, role || 'client', approval_status || 'approved'];
@@ -4643,10 +4722,25 @@ app.get('/admin/billing-companies/:id/bling/callback', async (req, res) => {
     }
 });
 
-// POST /webhooks/bling/:billingCompanyId — webhook do Bling (publico)
+// POST /webhooks/bling/:billingCompanyId — webhook do Bling (protegido por secret)
 app.post('/webhooks/bling/:billingCompanyId', async (req, res) => {
     const { billingCompanyId } = req.params;
-    console.log(`[Bling Webhook] Recebido para empresa ${billingCompanyId}:`, JSON.stringify(req.body));
+
+    // SECURITY: Validar secret via query parameter para impedir forjamento de webhooks
+    const webhookSecret = req.query.secret;
+    if (!webhookSecret || webhookSecret !== process.env.BLING_WEBHOOK_SECRET) {
+        console.warn(`[Bling Webhook] Secret invalido para empresa ${billingCompanyId}`);
+        return res.sendStatus(403);
+    }
+
+    // Validar que billingCompanyId é numérico
+    const companyId = parseInt(billingCompanyId);
+    if (isNaN(companyId) || companyId <= 0) {
+        console.warn(`[Bling Webhook] billingCompanyId invalido: ${billingCompanyId}`);
+        return res.sendStatus(400);
+    }
+
+    console.log(`[Bling Webhook] Recebido para empresa ${companyId}:`, JSON.stringify(req.body));
 
     try {
         const payload = req.body;
@@ -4657,7 +4751,7 @@ app.post('/webhooks/bling/:billingCompanyId', async (req, res) => {
         }
 
         // Get Bling token for this company
-        const accessToken = await blingService.getBlingToken(parseInt(billingCompanyId));
+        const accessToken = await blingService.getBlingToken(companyId);
 
         // Fetch order details from Bling
         const blingOrder = await blingService.fetchBlingOrderDetails(accessToken, blingOrderId);
@@ -4996,7 +5090,7 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
                     port: Number(creds.smtp_port) || 587,
                     secure: false,
                     auth: { user: creds.smtp_username, pass: creds.smtp_password },
-                    tls: { rejectUnauthorized: false }
+                    tls: { rejectUnauthorized: true }
                 });
                 await transport.verify();
                 testResult = { success: true, message: `SMTP conectado (${creds.smtp_address}:${creds.smtp_port || 587})` };
@@ -5077,11 +5171,26 @@ app.post('/admin/integrations/:type/test', authenticateToken, requireAdmin, asyn
 // =============================================
 
 // POST /meta-capi/event — endpoint chamado pelo frontend para enviar eventos server-side
-app.post('/meta-capi/event', async (req, res) => {
+const metaCapiLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 30, message: 'Muitas requisicoes de eventos.' });
+
+app.post('/meta-capi/event', metaCapiLimiter, async (req, res) => {
     try {
+        // Validar origin para permitir apenas o frontend autorizado
+        const origin = req.headers.origin || req.headers.referer || '';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://revenda.pelg.com.br';
+        if (origin && !origin.startsWith(frontendUrl)) {
+            return res.status(403).json({ error: 'Origin nao autorizado' });
+        }
+
         const { event_name, event_data, user_data, event_source_url, event_id } = req.body;
 
         if (!event_name) return res.status(400).json({ error: 'event_name obrigatorio' });
+
+        // Validar event_name contra lista permitida
+        const allowedEvents = ['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout', 'Purchase', 'Lead', 'CompleteRegistration', 'Search'];
+        if (!allowedEvents.includes(event_name)) {
+            return res.status(400).json({ error: 'event_name invalido' });
+        }
 
         // Buscar credenciais da integracao meta
         const { rows } = await db.query("SELECT credentials FROM integrations WHERE integration_type = 'meta'");
@@ -5274,26 +5383,50 @@ app.post('/webhooks/gateway/ipag', async (req, res) => {
             return res.sendStatus(200);
         }
 
+        // SECURITY: Back-channel verification — não confiar no body do webhook.
+        // Verificar status real diretamente na API do iPag antes de alterar o pedido.
+        const transactionId = parsed.transactionId || order.gateway_transaction_id || order.ipag_transaction_id;
+
+        if (!transactionId) {
+            console.warn('iPag Gateway Webhook: sem transactionId para verificar');
+            return res.sendStatus(200);
+        }
+
+        // Buscar credenciais do gateway
+        const { rows: gwRows } = await db.query(
+            "SELECT credentials FROM payment_gateways WHERE gateway_type = 'ipag' AND active = true LIMIT 1"
+        );
+        if (gwRows.length === 0) {
+            console.warn('iPag Gateway Webhook: gateway iPag nao configurado');
+            return res.sendStatus(200);
+        }
+
+        const verified = await ipagGateway.verifyPaymentStatus(transactionId, gwRows[0].credentials);
+        console.log(`iPag Gateway Webhook: verificacao back-channel tid=${transactionId} => status=${verified.ipag_status}`);
+
+        const verifiedStatus = verified.ipag_status || parsed.status;
+        const verifiedIsPaid = verified.status === 'paid';
+
         await db.query(
             'UPDATE orders SET ipag_status = $1, gateway_status = $1, ipag_transaction_id = COALESCE($2, ipag_transaction_id), gateway_transaction_id = COALESCE($2, gateway_transaction_id), updated_at = NOW() WHERE id = $3',
-            [parsed.status, parsed.transactionId, order.id]
+            [verifiedStatus, transactionId, order.id]
         );
 
-        if (parsed.isPaid && order.status === 'pending') {
+        if (verifiedIsPaid && order.status === 'pending') {
             await db.query("UPDATE orders SET status = 'paid', updated_at = NOW() WHERE id = $1", [order.id]);
-            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como paid (status: ${parsed.status})`);
+            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como paid (verificado via API)`);
             const orderTotal = parseFloat(order.total) || 0;
             await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
         }
 
         // Detectar pagamento recusado/falho
-        const parsedStatusStr = (parsed.status || '').toString().toLowerCase();
-        const isGwFailed = parsedStatusStr === 'recusado' || parsedStatusStr === 'failed' ||
-            parsedStatusStr === 'declined' || parsedStatusStr === '7';
+        const verifiedStatusStr = (verifiedStatus || '').toString().toLowerCase();
+        const isGwFailed = verifiedStatusStr === 'recusado' || verifiedStatusStr === 'failed' ||
+            verifiedStatusStr === 'declined' || verifiedStatusStr === '7';
 
         if (isGwFailed && (order.status === 'pending' || order.status === 'failed')) {
             await db.query("UPDATE orders SET status = 'failed', updated_at = NOW() WHERE id = $1", [order.id]);
-            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como failed (status: ${parsedStatusStr})`);
+            console.log(`iPag Gateway Webhook: pedido ${order.id} marcado como failed (verificado via API)`);
 
             if (order.woocommerce_order_id) {
                 woocommerceService.updateOrderStatus(order.woocommerce_order_id, 'failed').catch((e) => {
@@ -5327,12 +5460,15 @@ app.post('/webhooks/gateway/mercadopago', async (req, res) => {
 
         let order = orderRows[0];
 
-        // Se needsFetch, buscar status completo da API do MP
-        if (parsed.needsFetch && order) {
+        // SECURITY: Sempre verificar status via API do MP (back-channel verification)
+        // Nunca confiar apenas no body do webhook para marcar pagamento como pago
+        if (order) {
             const creds = order.credentials || {};
             if (creds.access_token) {
                 const status = await mpGateway.verifyPaymentStatus(parsed.transactionId, creds);
                 const isPaid = status.status === 'paid';
+
+                console.log(`MP Webhook: verificacao back-channel tid=${parsed.transactionId} => status=${status.gateway_status}`);
 
                 await db.query(
                     'UPDATE orders SET gateway_status = $1, ipag_status = $1, updated_at = NOW() WHERE id = $2',
@@ -5344,6 +5480,8 @@ app.post('/webhooks/gateway/mercadopago', async (req, res) => {
                     const orderTotal = parseFloat(order.total) || 0;
                     await processPostPaymentLogic(order.id, order.user_id, orderTotal, order.details);
                 }
+            } else {
+                console.warn('MP Webhook: sem access_token para verificar pagamento — ignorando');
             }
         }
 
@@ -5407,7 +5545,7 @@ app.post('/webhooks/gateway/stripe', async (req, res) => {
 // =============================================
 
 // 1. Enviar email de verificacao
-app.post('/auth/send-verification', async (req, res) => {
+app.post('/auth/send-verification', authRateLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
 
@@ -5454,7 +5592,7 @@ app.post('/auth/verify-email', async (req, res) => {
     if (!token) return res.status(400).json({ message: 'Token obrigatorio' });
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         if (decoded.type !== 'email-verification') {
             return res.status(400).json({ message: 'Token invalido' });
         }
@@ -5484,7 +5622,7 @@ app.post('/auth/verify-email', async (req, res) => {
 });
 
 // 3. Esqueci minha senha (por email)
-app.post('/auth/forgot-password', async (req, res) => {
+app.post('/auth/forgot-password', authRateLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
 
@@ -5524,14 +5662,14 @@ app.post('/auth/forgot-password', async (req, res) => {
 });
 
 // 4. Resetar senha com token (chama central-pelg para trocar a senha)
-app.post('/auth/reset-password', async (req, res) => {
+app.post('/auth/reset-password', authRateLimiter, async (req, res) => {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
         return res.status(400).json({ message: 'Token e nova senha sao obrigatorios' });
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
         // Aceitar tokens gerados pela revenda (password-reset) ou pelo central-pelg (reset)
         if (decoded.type !== 'password-reset' && decoded.type !== 'reset') {
@@ -5592,7 +5730,7 @@ app.post('/auth/reset-password', async (req, res) => {
 });
 
 // 5. Solicitar OTP por email
-app.post('/auth/request-otp', async (req, res) => {
+app.post('/auth/request-otp', authRateLimiter, async (req, res) => {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: 'Email obrigatorio' });
 
@@ -5609,7 +5747,7 @@ app.post('/auth/request-otp', async (req, res) => {
         const user = rows[0];
 
         // Gerar OTP de 6 digitos
-        const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+        const otpCode = String(crypto.randomInt(100000, 999999));
 
         await db.query(
             `UPDATE users SET otp_code = $1, otp_expires = NOW() + INTERVAL '15 minutes' WHERE id = $2`,
@@ -5630,7 +5768,7 @@ app.post('/auth/request-otp', async (req, res) => {
 });
 
 // 6. Verificar OTP e autenticar
-app.post('/auth/verify-otp', async (req, res) => {
+app.post('/auth/verify-otp', authRateLimiter, async (req, res) => {
     const { email, otp } = req.body;
     if (!email || !otp) {
         return res.status(400).json({ message: 'Email e codigo sao obrigatorios' });
@@ -6189,3 +6327,83 @@ setInterval(async () => {
         console.error('Erro auto-cancel:', e.message);
     }
 }, 60 * 60 * 1000); // A cada 1 hora
+
+// =============================================
+// CRON INTERNO: verificacao de niveis e indicacoes (1x por dia)
+// =============================================
+function scheduleDaily(hour, minute, fn, label) {
+    const run = () => {
+        const now = new Date();
+        const next = new Date();
+        next.setHours(hour, minute, 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+        const delay = next.getTime() - now.getTime();
+
+        setTimeout(async () => {
+            console.log(`[Cron ${label}] Executando...`);
+            try {
+                await fn();
+                console.log(`[Cron ${label}] Concluido com sucesso`);
+            } catch (err) {
+                console.error(`[Cron ${label}] Erro:`, err.message);
+            }
+            run(); // Reagendar para o proximo dia
+        }, delay);
+
+        const nextStr = next.toISOString().slice(0, 19).replace('T', ' ');
+        console.log(`[Cron ${label}] Proxima execucao: ${nextStr}`);
+    };
+    run();
+}
+
+// Verificar niveis — todo dia as 02:00
+scheduleDaily(2, 0, async () => {
+    // Downgrade por inatividade
+    const { rows: inactiveUsers } = await db.query(`
+        SELECT id, level, last_purchase_date FROM users
+        WHERE level != 'bronze'
+        AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+    `);
+
+    for (const user of inactiveUsers) {
+        let newLevel;
+        if (user.level === 'ouro') newLevel = 'prata';
+        else if (user.level === 'prata') newLevel = 'bronze';
+        else continue;
+
+        await db.query('UPDATE users SET level = $1, level_updated_at = NOW() WHERE id = $2', [newLevel, user.id]);
+        await db.query(
+            'INSERT INTO level_history (user_id, old_level, new_level, reason, changed_by) VALUES ($1, $2, $3, $4, $5)',
+            [user.id, user.level, newLevel, `Inatividade: ${INACTIVITY_DAYS} dias sem compra`, 'cron']
+        );
+    }
+
+    // Suspender bronzes inativos
+    await db.query(`
+        UPDATE users SET approval_status = 'suspended'
+        WHERE level = 'bronze' AND approval_status = 'approved'
+        AND last_purchase_date IS NOT NULL
+        AND last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+    `);
+
+    // Check for upgrades
+    const { rows: allUsers } = await db.query("SELECT id FROM users WHERE approval_status = 'approved'");
+    for (const u of allUsers) {
+        await recalculateUserLevel(u.id);
+    }
+
+    console.log(`[Cron check-levels] ${inactiveUsers.length} rebaixados, ${allUsers.length} verificados`);
+}, 'check-levels');
+
+// Verificar indicacoes — todo dia as 02:30
+scheduleDaily(2, 30, async () => {
+    const { rowCount } = await db.query(`
+        UPDATE referrals SET status = 'inactive'
+        WHERE status = 'active'
+        AND referred_id IN (
+            SELECT id FROM users WHERE last_purchase_date < NOW() - INTERVAL '${INACTIVITY_DAYS} days'
+        )
+    `);
+
+    console.log(`[Cron check-referral-activity] ${rowCount} indicacoes inativadas`);
+}, 'check-referral-activity');

@@ -97,13 +97,25 @@ async function fetchBlingNfe(accessToken, nfeId) {
  * Returns the relative URL path for serving.
  */
 async function downloadAndSaveDanfe(pdfUrl, orderId, accessToken) {
+    // Sanitizar orderId para prevenir path traversal
+    const safeOrderId = String(orderId).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeOrderId || safeOrderId !== String(orderId)) {
+        throw new Error('orderId contém caracteres inválidos');
+    }
+
     const uploadsDir = path.join(__dirname, 'uploads', 'notas');
     if (!fs.existsSync(uploadsDir)) {
         fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    const fileName = `${orderId}_danfe.pdf`;
+    const fileName = `${safeOrderId}_danfe.pdf`;
     const filePath = path.join(uploadsDir, fileName);
+
+    // Verificar que o caminho final está dentro do diretório esperado
+    const resolvedPath = path.resolve(filePath);
+    if (!resolvedPath.startsWith(path.resolve(uploadsDir))) {
+        throw new Error('Caminho de arquivo invalido');
+    }
 
     const resp = await axios.get(pdfUrl, {
         responseType: 'arraybuffer',

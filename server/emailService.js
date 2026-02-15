@@ -45,7 +45,7 @@ async function getTransporter() {
         port: Number(smtpPort) || 587,
         secure: false,
         auth: { user: smtpUser, pass: smtpPass },
-        tls: { rejectUnauthorized: false },
+        tls: { rejectUnauthorized: true },
     });
 
     const from = smtpUser || 'suporte@patriciaelias.com.br';
